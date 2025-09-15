@@ -1,0 +1,61 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Dependency directories
+node_modules/
+
+# Build output
+build/
+dist/
+.tmp/
+.tmp-*/
+_tmp/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Env files / secrets
+.env
+.env.*
+!.env.example
+
+# Local config/IDE
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store?
+Icon?
+
+# Package locks (optional)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# AWS/Athena local caches (if any)
+.s3-cache/
+athena-results/
+
+# Archive tmp/output
+/tmp/
+/tmp-*/
