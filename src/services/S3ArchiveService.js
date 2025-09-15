@@ -81,6 +81,7 @@ class S3ArchiveService {
       created_at: { type: 'TIMESTAMP_MILLIS', optional: false },
       updated_at: { type: 'TIMESTAMP_MILLIS', optional: false },
       day_forecast: { type: 'UTF8', optional: false },
+      timezone: { type: 'UTF8', optional: true },
       
       // Archive metadata fields (year-based partitioning)
       archive_year: { type: 'INT32', optional: false },
@@ -102,9 +103,13 @@ class S3ArchiveService {
     // Infer field types from sample record
     Object.keys(sampleRecord).forEach(field => {
       const value = sampleRecord[field];
+      const lowerField = String(field).toLowerCase();
       
       if (field === 'id' || field.endsWith('_id')) {
         schemaFields[field] = { type: 'INT64', optional: false };
+      } else if (lowerField === 'timezone') {
+        // Ensure timezone is stored as string, not a timestamp
+        schemaFields[field] = { type: 'UTF8', optional: true };
       } else if (typeof value === 'number') {
         // Check if it's an integer or float
         schemaFields[field] = { 
@@ -113,7 +118,7 @@ class S3ArchiveService {
         };
       } else if (value instanceof Date || moment.isDate(value) || moment.isMoment(value)) {
         schemaFields[field] = { type: 'TIMESTAMP_MILLIS', optional: true };
-      } else if (field.includes('date') || field.includes('time')) {
+      } else if ((lowerField.includes('date') || lowerField.includes('time')) && lowerField !== 'timezone') {
         // Date/time fields as timestamps
         schemaFields[field] = { type: 'TIMESTAMP_MILLIS', optional: true };
       } else {
@@ -300,8 +305,9 @@ class S3ArchiveService {
     // Convert date strings to proper Date objects for TIMESTAMP_MILLIS
     Object.keys(transformed).forEach(key => {
       const value = transformed[key];
+      const lowerKey = String(key).toLowerCase();
       
-      if (key.includes('date') || key.includes('time') || key === 'created_at' || key === 'updated_at') {
+      if ((lowerKey.includes('date') || lowerKey.includes('time') || key === 'created_at' || key === 'updated_at') && lowerKey !== 'timezone') {
         if (typeof value === 'string') {
           transformed[key] = new Date(value);
         } else if (moment.isMoment(value)) {
@@ -318,6 +324,11 @@ class S3ArchiveService {
     // Add archive metadata (year-based partitioning)
     transformed.archive_year = year;
     transformed.archive_date = archiveTimestamp;
+
+    // Normalize timezone to string if present
+    if (transformed.timezone !== undefined && transformed.timezone !== null) {
+      transformed.timezone = String(transformed.timezone);
+    }
 
     return transformed;
   }

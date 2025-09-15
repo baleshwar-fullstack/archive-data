@@ -289,22 +289,25 @@ class AthenaService {
         conditions.push(`quarter IN (${quarterList})`);
       }
 
-      // Add precise date range filter within records
+      // Add precise date range filter within records using row timezone if available
       if (filters.startDate) {
-        conditions.push(`created_at >= TIMESTAMP '${filters.startDate}'`);
+        conditions.push(`at_timezone(created_at, COALESCE(timezone, 'UTC')) >= at_timezone(TIMESTAMP '${filters.startDate}', COALESCE(timezone, 'UTC'))`);
       }
       
       if (filters.endDate) {
-        conditions.push(`created_at <= TIMESTAMP '${filters.endDate}'`);
+        conditions.push(`at_timezone(created_at, COALESCE(timezone, 'UTC')) <= at_timezone(TIMESTAMP '${filters.endDate}', COALESCE(timezone, 'UTC'))`);
       }
 
       if (conditions.length > 0) {
         sql += ` WHERE ${conditions.join(' AND ')}`;
       }
 
-      // Add ordering
+      // Add ordering (respect row timezone when ordering by created_at)
       if (options.orderBy) {
-        sql += ` ORDER BY ${options.orderBy}`;
+        const orderField = options.orderBy === 'created_at'
+          ? `at_timezone(created_at, COALESCE(timezone, 'UTC'))`
+          : options.orderBy;
+        sql += ` ORDER BY ${orderField}`;
         if (options.orderDirection) {
           sql += ` ${options.orderDirection}`;
         }

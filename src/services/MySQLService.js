@@ -173,10 +173,13 @@ class MySQLService {
       }
       
       // Use template literals for LIMIT and OFFSET to avoid parameter binding issues
+      // Include project's timezone for downstream archiving and Athena queries
       const query = `
-        SELECT * FROM ${tableName} 
-        WHERE created_at < ? 
-        ORDER BY created_at ASC 
+        SELECT t.*, COALESCE(p.timezone, 'America/Los_Angeles') AS timezone
+        FROM ${tableName} t
+        LEFT JOIN projects p ON p.id = t.project_id
+        WHERE t.created_at < ?
+        ORDER BY t.created_at ASC
         LIMIT ${limit} OFFSET ${offsetInt}
       `;
       
