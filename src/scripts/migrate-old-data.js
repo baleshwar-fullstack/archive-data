@@ -55,7 +55,8 @@ class DataMigrationService {
         if (batchResult.processed < this.batchSize) {
           hasMoreData = false;
         } else {
-          offset += this.batchSize;
+          // When deleting during migration, rows shift; always read from offset 0 to avoid skips
+          offset = options.dryRun ? offset + this.batchSize : 0;
         }
 
         // Small delay between batches
