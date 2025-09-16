@@ -35,7 +35,7 @@ class ScheduledMigrationService {
     const defaultConfig = {
       enabled: true,
       scheduleIntervalMonths: 6,
-      tables: ['weather_reports'],
+      tables: ['weather_reports', 'project_hours'],
       retryAttempts: 3,
       retryDelayMinutes: 30,
       batchSize: 1000,

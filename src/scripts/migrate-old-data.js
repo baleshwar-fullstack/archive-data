@@ -17,8 +17,7 @@ class DataMigrationService {
    * Main migration function
    */
   async migrate(tableName, options = {}) {
-    console.log(`\n🚀 Starting migration for table: ${tableName}`);
-    console.log(`📊 Batch size: ${this.batchSize}`);
+    console.log(`Starting migration for table: ${tableName} (batchSize=${this.batchSize})`);
     
     const stats = {
       totalProcessed: 0,
@@ -42,7 +41,7 @@ class DataMigrationService {
       let hasMoreData = true;
 
       while (hasMoreData) {
-        console.log(`\n📦 Processing batch ${Math.floor(offset / this.batchSize) + 1}...`);
+        // processing next batch
         
         const batchResult = await this.processBatch(tableName, offset, options);
         
@@ -51,9 +50,7 @@ class DataMigrationService {
         stats.totalDeleted += batchResult.deleted;
         stats.errors += batchResult.errors;
 
-        // Progress reporting
-        const progressPercent = ((stats.totalProcessed / totalRecords) * 100).toFixed(1);
-        console.log(`📈 Progress: ${stats.totalProcessed}/${totalRecords} (${progressPercent}%)`);
+        // Progress counters only (no verbose output)
 
         if (batchResult.processed < this.batchSize) {
           hasMoreData = false;
@@ -61,18 +58,13 @@ class DataMigrationService {
           offset += this.batchSize;
         }
 
-        // Small delay between batches to prevent overwhelming the system
+        // Small delay between batches
         await this.sleep(1000);
       }
 
       const duration = (Date.now() - stats.startTime) / 1000;
-      console.log(`\nMigration completed for ${tableName}`);
-      console.log(`📊 Final Stats:`);
-      console.log(`   - Total Processed: ${stats.totalProcessed}`);
-      console.log(`   - Total Archived: ${stats.totalArchived}`);
-      console.log(`   - Total Deleted: ${stats.totalDeleted}`);
-      console.log(`   - Errors: ${stats.errors}`);
-      console.log(`   - Duration: ${duration}s`);
+      console.log(`Migration completed for ${tableName}`);
+      console.log(`Processed=${stats.totalProcessed} Archived=${stats.totalArchived} Deleted=${stats.totalDeleted} Errors=${stats.errors} Duration=${duration}s`);
 
       return stats;
     } catch (error) {
@@ -128,18 +120,18 @@ class DataMigrationService {
                 batchStats.deleted += deleteResult.deletedCount;
               }
               
-              console.log(`   Archived ${groupRecords.length} records for year ${year} (${archiveResult.partitionStrategy})`);
+              // archived group
               archived = true;
             }
           } catch (error) {
             retryCount++;
-            console.error(`   Archive attempt ${retryCount} failed for year ${year}:`, error.message);
+            console.error(`Archive attempt ${retryCount} failed for year ${year}:`, error.message);
             
             if (retryCount < this.maxRetries) {
-              console.log(`   🔄 Retrying in ${this.retryDelay / 1000}s...`);
+              console.log(`Retrying in ${this.retryDelay / 1000}s...`);
               await this.sleep(this.retryDelay);
             } else {
-              console.error(`   Max retries exceeded for year ${year}`);
+              console.error(`Max retries exceeded for year ${year}`);
               batchStats.errors += groupRecords.length;
             }
           }
@@ -161,8 +153,10 @@ class DataMigrationService {
     const groups = {};
 
     records.forEach(record => {
-      const created = String(record.created_at || '');
-      const year = created.slice(0, 4); // Preserve exactly as stored (no parsing)
+      // Prefer submission_date if present (e.g., project_hours), else fallback to created_at
+      const dateSource = record.submission_date || record.created_at || '';
+      const dateString = String(dateSource);
+      const year = dateString.slice(0, 4); // Preserve exactly as stored (no parsing)
 
       if (!groups[year]) {
         groups[year] = [];
@@ -193,18 +187,16 @@ class DataMigrationService {
    * Verify migration integrity
    */
   async verifyMigration(tableName) {
-    console.log(`\n🔍 Verifying migration for ${tableName}...`);
+    console.log(`Verifying migration for ${tableName}...`);
 
     try {
-      // Check if any old records remain in MySQL
       const remainingCount = await this.getTotalRecordsToMigrate(tableName);
       
       if (remainingCount > 0) {
-        console.log(`⚠️  Warning: ${remainingCount} old records still remain in MySQL`);
+        console.log(`Warning: ${remainingCount} old records still remain in MySQL`);
         return false;
       }
 
-      // Get archived record count from S3
       const archivedCount = await this.s3ArchiveService.getArchivedCount(tableName);
       
       console.log(`Verification completed:`);
@@ -222,25 +214,17 @@ class DataMigrationService {
    * Rollback migration (restore from S3 to MySQL)
    */
   async rollback(tableName, options = {}) {
-    console.log(`\n🔄 Starting rollback for table: ${tableName}`);
+    console.log(`Starting rollback for table: ${tableName}`);
     
     try {
-      // This is a simplified rollback implementation
-      // In production, you'd want more sophisticated rollback logic
-      console.log('⚠️  Rollback functionality requires careful implementation');
-      console.log('   Consider implementing based on your specific requirements');
+      console.log('Rollback functionality requires careful implementation');
       
       if (options.confirm !== true) {
         console.log('Rollback cancelled. Use { confirm: true } to proceed.');
         return false;
       }
 
-      // Implementation would involve:
-      // 1. Querying archived data from S3
-      // 2. Restoring to MySQL
-      // 3. Deleting from S3 if successful
-      
-      console.log('🚧 Rollback functionality not implemented in this example');
+      console.log('Rollback functionality not implemented in this example');
       return false;
     } catch (error) {
       console.error('Rollback failed:', error);
@@ -262,21 +246,21 @@ async function main() {
   
   if (args.length === 0) {
     console.log(`
-Usage: node migrate-old-data.js <command> [options]
+    Usage: node migrate-old-data.js <command> [options]
 
-Commands:
-  migrate <table_name>     Migrate old data from MySQL to S3
-  verify <table_name>      Verify migration integrity
-  rollback <table_name>    Rollback migration (restore from S3)
+    Commands:
+      migrate <table_name>     Migrate old data from MySQL to S3
+      verify <table_name>      Verify migration integrity
+      rollback <table_name>    Rollback migration (restore from S3)
 
-Options:
-  --dry-run               Show what would be migrated without actually doing it
-  --batch-size <size>     Set batch size (default: 1000)
+    Options:
+      --dry-run               Show what would be migrated without actually doing it
+      --batch-size <size>     Set batch size (default: 1000)
 
-Examples:
-  node migrate-old-data.js migrate users
-  node migrate-old-data.js migrate orders --dry-run
-  node migrate-old-data.js verify users
+    Examples:
+      node migrate-old-data.js migrate users
+      node migrate-old-data.js migrate orders --dry-run
+      node migrate-old-data.js verify users
     `);
     process.exit(1);
   }

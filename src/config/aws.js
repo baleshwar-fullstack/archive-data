@@ -35,7 +35,7 @@ class AWSConfig {
   }
 
   getArchivePrefix() {
-    return process.env.S3_ARCHIVE_PREFIX || 'archived-data/';
+    return process.env.S3_ARCHIVE_PREFIX;
   }
 }
 

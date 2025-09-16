@@ -23,6 +23,17 @@ class S3ArchiveService {
   }
 
   /**
+   * Get archive prefix for a specific table
+   */
+  getTablePrefix(tableName) {
+    const lower = String(tableName || '').toLowerCase();
+    if (lower === 'project_hours') {
+      return 'project-hours/';
+    }
+    return this.prefix;
+  }
+
+  /**
    * Clean up temporary directory and old files
    */
   cleanupTempDirectory() {
@@ -38,7 +49,6 @@ class S3ArchiveService {
             // Delete files older than 1 hour
             if (now - stats.mtime.getTime() > 3600000) {
               fs.unlinkSync(filePath);
-              console.log(`🧹 Cleaned up old temp file: ${file}`);
             }
           } catch (error) {
             // File might have been deleted already, ignore
@@ -46,7 +56,7 @@ class S3ArchiveService {
         }
       }
     } catch (error) {
-      console.warn('Warning: Could not clean temp directory:', error.message);
+      console.warn('Could not clean temp directory:', error.message);
     }
   }
 
@@ -59,10 +69,7 @@ class S3ArchiveService {
     try {
       if (fs.existsSync(tempFilePath)) {
         fs.unlinkSync(tempFilePath);
-        if (!suppressLogs) {
-          const fileName = path.basename(tempFilePath);
-          console.log(`🧹 Cleaned up temp file: ${fileName}`);
-        }
+        // intentionally silent
       }
     } catch (cleanupError) {
       console.error(`Error cleaning up temp file ${path.basename(tempFilePath)}:`, cleanupError.message);
@@ -84,6 +91,31 @@ class S3ArchiveService {
       day_forecast: { type: 'UTF8', optional: false },
       timezone: { type: 'UTF8', optional: true },
       
+      // Archive metadata fields (year-based partitioning)
+      archive_year: { type: 'INT32', optional: false },
+      archive_date: { type: 'TIMESTAMP_MILLIS', optional: false }
+    });
+  }
+
+  /**
+   * Get Parquet schema for project_hours table
+   */
+  getProjectHoursSchema() {
+    return new parquet.ParquetSchema({
+      id: { type: 'INT64', optional: false },
+      project_id: { type: 'INT64', optional: false },
+      user_id: { type: 'INT64', optional: false },
+      name: { type: 'UTF8', optional: true },
+      quantity: { type: 'INT64', optional: true },
+      hours: { type: 'DOUBLE', optional: true },
+      total_hours: { type: 'DOUBLE', optional: true },
+      description: { type: 'UTF8', optional: true },
+      submission_date: { type: 'INT32', originalType: 'DATE', optional: false },
+      to_delete: { type: 'INT32', optional: true },
+      has_no_work: { type: 'INT32', optional: true },
+      created_at: { type: 'TIMESTAMP_MILLIS', optional: false },
+      updated_at: { type: 'TIMESTAMP_MILLIS', optional: true },
+
       // Archive metadata fields (year-based partitioning)
       archive_year: { type: 'INT32', optional: false },
       archive_date: { type: 'TIMESTAMP_MILLIS', optional: false }
@@ -146,7 +178,7 @@ class S3ArchiveService {
       // Auto-detect year from data if not provided
       const year = providedYear || this.detectYearFromData(data);
       
-      console.log(`📦 Creating Parquet file for ${data.length} records (Year ${year})...`);
+      console.log(`Creating Parquet file for ${data.length} records (Year ${year})...`);
 
       // Create year-based partition path with smart redundancy detection
       const partitionPath = this.buildPartitionPath(tableName, year);
@@ -157,9 +189,12 @@ class S3ArchiveService {
       tempFilePath = path.join(this.tempDir, `${tableName}_${year}_${Date.now()}.parquet`);
 
       // Get appropriate schema
-      const schema = tableName === 'weather_reports' 
-        ? this.getWeatherReportsSchema() 
-        : this.getDynamicParquetSchema(tableName, data[0]);
+      const lowerTable = String(tableName).toLowerCase();
+      const schema = lowerTable === 'weather_reports'
+        ? this.getWeatherReportsSchema()
+        : lowerTable === 'project_hours'
+          ? this.getProjectHoursSchema()
+          : this.getDynamicParquetSchema(tableName, data[0]);
 
       // Create Parquet writer with optimized settings
       const writer = await parquet.ParquetWriter.openFile(schema, tempFilePath, {
@@ -238,7 +273,8 @@ class S3ArchiveService {
    * Used for broad queries across all years
    */
   buildBasePrefix(tableName) {
-    const prefix = this.prefix.toLowerCase();
+    const tablePrefix = this.getTablePrefix(tableName);
+    const prefix = tablePrefix.toLowerCase();
     const table = tableName.toLowerCase();
     
     // Check for redundancy patterns
@@ -251,10 +287,10 @@ class S3ArchiveService {
     
     if (isRedundant) {
       // Skip table name to avoid duplication
-      return this.prefix;
+      return tablePrefix;
     } else {
       // Standard path: prefix + table
-      return `${this.prefix}${tableName}/`;
+      return `${tablePrefix}${tableName}/`;
     }
   }
 
@@ -267,8 +303,8 @@ class S3ArchiveService {
     const fullPath = `${basePrefix}year=${year}/`;
     
     // Log only when redundancy is detected
-    if (basePrefix === this.prefix) {
-      console.log(`📂 Detected redundancy: "${this.prefix}" + "${tableName}" → using "${fullPath}"`);
+    if (basePrefix === this.getTablePrefix(tableName)) {
+      // redundancy detected; using compact base prefix
     }
     
     return fullPath;
@@ -282,8 +318,14 @@ class S3ArchiveService {
       return new Date().getFullYear();
     }
 
-    // Find the first record with a valid created_at field
+    // Prefer submission_date when available (e.g., project_hours)
     for (const record of data) {
+      if (record.submission_date) {
+        const sd = this.safeMoment(record.submission_date);
+        if (sd) {
+          return sd.year();
+        }
+      }
       if (record.created_at) {
         const date = this.safeMoment(record.created_at);
         if (date) {
@@ -322,6 +364,19 @@ class S3ArchiveService {
             transformed[key] = new Date(value);
           }
         }
+      } else if (key === 'submission_date') {
+        // Parquet DATE logical type expects INT32 days since epoch
+        if (value) {
+          const m = this.safeMoment(value);
+          if (m) {
+            const daysSinceEpoch = Math.floor(m.startOf('day').diff(moment.utc('1970-01-01'), 'days'));
+            transformed[key] = daysSinceEpoch;
+          } else {
+            const d = new Date(value);
+            const utcY = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+            transformed[key] = Math.floor(utcY / 86400000);
+          }
+        }
       } else if ((lowerKey.includes('date') || lowerKey.includes('time')) && lowerKey !== 'timezone') {
         if (typeof value === 'string') {
           transformed[key] = new Date(value);
@@ -354,7 +409,7 @@ class S3ArchiveService {
    */
   async queryArchivedData(tableName, filters = {}, options = {}) {
     try {
-      console.log(`🔍 Querying Parquet archives for ${tableName}...`);
+      // Querying archived Parquet data
 
       const listParams = {
         Bucket: this.bucket,
@@ -363,13 +418,13 @@ class S3ArchiveService {
 
       // Add year-based partition filtering if date range is specified
       if (filters.startDate || filters.endDate) {
-        console.log(`📅 Date filtering requested - startDate: ${filters.startDate}, endDate: ${filters.endDate}`);
+        // date filtering requested
         const yearRanges = this.getYearRanges(filters.startDate, filters.endDate);
         if (yearRanges.length === 1) {
           listParams.Prefix = this.buildPartitionPath(tableName, yearRanges[0]);
-          console.log(`🎯 Single year partition optimization: ${listParams.Prefix}`);
+          // single year partition optimization
         } else {
-          console.log(`📊 Multi-year query will scan ${yearRanges.length} years: ${yearRanges.join(', ')}`);
+          // multi-year query across several years
         }
       }
 
@@ -392,11 +447,11 @@ class S3ArchiveService {
       
       const relevantObjects = this.filterObjectsByDate(parquetObjects, filters);
 
-      console.log(`📊 Found ${relevantObjects.length} Parquet files to query`);
+      // files to query count
 
       // For large datasets, suggest using Athena
       if (relevantObjects.length > 10) {
-        console.log(`⚠️  Large dataset detected (${relevantObjects.length} files). Consider using AWS Athena for better performance.`);
+        console.log(`Large dataset detected (${relevantObjects.length} files). Consider using AWS Athena for better performance.`);
       }
 
       // Retrieve and combine data from relevant Parquet objects
@@ -649,7 +704,7 @@ class S3ArchiveService {
     // Safely parse start date
     const startMoment = this.safeMoment(startDate);
     if (!startMoment) {
-      console.warn(`⚠️  Invalid startDate: ${startDate}, using archive cutoff year`);
+      console.warn(`Invalid startDate: ${startDate}, using archive cutoff year`);
       // Use fallback range from cutoff to current year
       for (let year = cutoffYear; year <= currentYear; year++) {
         years.push(year);
@@ -660,7 +715,7 @@ class S3ArchiveService {
     // Safely parse end date
     const endMoment = this.safeMoment(endDate);
     if (!endMoment) {
-      console.warn(`⚠️  Invalid endDate: ${endDate}, using current year`);
+      console.warn(`Invalid endDate: ${endDate}, using current year`);
       // Use range from valid start to current year
       const startYear = startMoment.year();
       for (let year = startYear; year <= currentYear; year++) {
@@ -674,7 +729,7 @@ class S3ArchiveService {
     
     // Ensure start year is not after end year
     if (startYear > endYear) {
-      console.warn(`⚠️  startYear (${startYear}) is after endYear (${endYear}), swapping dates`);
+      console.warn(`startYear (${startYear}) is after endYear (${endYear}), swapping dates`);
       for (let year = endYear; year <= startYear; year++) {
         years.push(year);
       }
@@ -684,7 +739,7 @@ class S3ArchiveService {
       }
     }
     
-    console.log(`📅 Year ranges for query: ${years.join(', ')}`);
+    // year ranges selected for query
     return years;
   }
 
@@ -693,11 +748,11 @@ class S3ArchiveService {
    */
   buildPartitionPrefix(tableName, yearRanges) {
     if (yearRanges.length === 1) {
-      return `${this.prefix}${tableName}/year=${yearRanges[0]}/`;
+      return `${this.getTablePrefix(tableName)}${tableName}/year=${yearRanges[0]}/`;
     }
     
     // For multiple year ranges, use the base table prefix
-    return `${this.prefix}${tableName}/`;
+    return `${this.getTablePrefix(tableName)}${tableName}/`;
   }
 
   /**
@@ -770,7 +825,7 @@ class S3ArchiveService {
    * This enables efficient querying of archived data with SQL
    */
   generateAthenaTableDDL(tableName, databaseName = 'weather_archive') {
-    const location = `s3://${this.bucket}/${this.prefix}${tableName}/`;
+    const location = `s3://${this.bucket}/${this.getTablePrefix(tableName)}${tableName}/`;
     
     if (tableName === 'weather_reports') {
       return `
@@ -792,6 +847,41 @@ TBLPROPERTIES (
   'projection.enabled'='true',
   'projection.archive_year.type'='integer',
   'projection.archive_year.range'='2020,2030',
+  'storage.location.template'='${location}year=\${archive_year}/'
+);
+
+-- Add partitions (run this after the table is created)
+MSCK REPAIR TABLE ${databaseName}.${tableName}_archive;
+      `.trim();
+    }
+
+    if (tableName === 'project_hours') {
+      return `
+CREATE EXTERNAL TABLE IF NOT EXISTS ${databaseName}.${tableName}_archive (
+  id bigint,
+  project_id bigint,
+  user_id bigint,
+  name string,
+  quantity bigint,
+  hours double,
+  total_hours double,
+  description string,
+  submission_date date,
+  to_delete int,
+  has_no_work int,
+  created_at timestamp,
+  updated_at timestamp
+)
+PARTITIONED BY (
+  archive_year int
+)
+STORED AS PARQUET
+LOCATION '${location}'
+TBLPROPERTIES (
+  'has_encrypted_data'='false',
+  'projection.enabled'='true',
+  'projection.archive_year.type'='integer',
+  'projection.archive_year.range'='2020,2035',
   'storage.location.template'='${location}year=\${archive_year}/'
 );
 
@@ -832,7 +922,7 @@ TBLPROPERTIES (
     try {
       const listParams = {
         Bucket: this.bucket,
-        Prefix: `${this.prefix}${tableName}/`
+        Prefix: `${this.getTablePrefix(tableName)}${tableName}/`
       };
 
       const listResponse = await this.s3.listObjectsV2(listParams).promise();
@@ -880,7 +970,6 @@ TBLPROPERTIES (
           
           if (now - stats.mtime.getTime() > maxAge) {
             fs.unlinkSync(filePath);
-            console.log(`🧹 Cleaned up old temp file: ${file}`);
           }
         });
       }
