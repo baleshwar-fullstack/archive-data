@@ -1,5 +1,6 @@
 const awsConfig = require('../config/aws');
 const moment = require('moment');
+require('moment-timezone');
 const parquet = require('parquetjs');
 const fs = require('fs');
 const path = require('path');
@@ -64,7 +65,7 @@ class S3ArchiveService {
         }
       }
     } catch (cleanupError) {
-      console.error(`⚠️  Error cleaning up temp file ${path.basename(tempFilePath)}:`, cleanupError.message);
+      console.error(`Error cleaning up temp file ${path.basename(tempFilePath)}:`, cleanupError.message);
     }
   }
 
@@ -182,7 +183,7 @@ class S3ArchiveService {
       // Get file stats for upload
       const stats = fs.statSync(tempFilePath);
       const tempFileName = path.basename(tempFilePath);
-      console.log(`✅ Parquet file ready: ${tempFileName} (${(stats.size / 1024).toFixed(1)} KB)`);
+      console.log(`Parquet file ready: ${tempFileName} (${(stats.size / 1024).toFixed(1)} KB)`);
 
       // Read the Parquet file and upload to S3
       const fileStream = fs.createReadStream(tempFilePath);
@@ -209,7 +210,7 @@ class S3ArchiveService {
 
       const uploadResult = await this.s3.upload(params).promise();
 
-      console.log(`🚀 Uploaded to S3: ${key} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`Uploaded to S3: ${key} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
 
       return {
         success: true,
@@ -307,7 +308,21 @@ class S3ArchiveService {
       const value = transformed[key];
       const lowerKey = String(key).toLowerCase();
       
-      if ((lowerKey.includes('date') || lowerKey.includes('time') || key === 'created_at' || key === 'updated_at') && lowerKey !== 'timezone') {
+      // Convert created_at/updated_at using row timezone to UTC
+      if ((key === 'created_at' || key === 'updated_at')) {
+        const tz = (transformed.timezone && String(transformed.timezone)) || 'America/Los_Angeles';
+        if (value) {
+          try {
+            const m = moment.tz(value, tz);
+            if (m.isValid()) {
+              transformed[key] = m.utc().toDate();
+            }
+          } catch (_) {
+            // Fallback to native Date if timezone parse failed
+            transformed[key] = new Date(value);
+          }
+        }
+      } else if ((lowerKey.includes('date') || lowerKey.includes('time')) && lowerKey !== 'timezone') {
         if (typeof value === 'string') {
           transformed[key] = new Date(value);
         } else if (moment.isMoment(value)) {
@@ -404,7 +419,7 @@ class S3ArchiveService {
       // Apply sorting and pagination
       const processedData = this.processResults(allData, options);
 
-      console.log(`✅ Retrieved ${allData.length} records from ${relevantObjects.length} Parquet files`);
+      console.log(`Retrieved ${allData.length} records from ${relevantObjects.length} Parquet files`);
 
       return {
         success: true,

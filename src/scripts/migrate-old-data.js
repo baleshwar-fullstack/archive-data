@@ -34,7 +34,7 @@ class DataMigrationService {
       console.log(`📋 Total records to migrate: ${totalRecords}`);
 
       if (totalRecords === 0) {
-        console.log('✅ No records to migrate.');
+        console.log('No records to migrate.');
         return stats;
       }
 
@@ -66,7 +66,7 @@ class DataMigrationService {
       }
 
       const duration = (Date.now() - stats.startTime) / 1000;
-      console.log(`\n✅ Migration completed for ${tableName}`);
+      console.log(`\nMigration completed for ${tableName}`);
       console.log(`📊 Final Stats:`);
       console.log(`   - Total Processed: ${stats.totalProcessed}`);
       console.log(`   - Total Archived: ${stats.totalArchived}`);
@@ -76,7 +76,7 @@ class DataMigrationService {
 
       return stats;
     } catch (error) {
-      console.error(`❌ Migration failed for ${tableName}:`, error);
+      console.error(`Migration failed for ${tableName}:`, error);
       throw error;
     }
   }
@@ -128,18 +128,18 @@ class DataMigrationService {
                 batchStats.deleted += deleteResult.deletedCount;
               }
               
-              console.log(`   ✅ Archived ${groupRecords.length} records for year ${year} (${archiveResult.partitionStrategy})`);
+              console.log(`   Archived ${groupRecords.length} records for year ${year} (${archiveResult.partitionStrategy})`);
               archived = true;
             }
           } catch (error) {
             retryCount++;
-            console.error(`   ⚠️  Archive attempt ${retryCount} failed for year ${year}:`, error.message);
+            console.error(`   Archive attempt ${retryCount} failed for year ${year}:`, error.message);
             
             if (retryCount < this.maxRetries) {
               console.log(`   🔄 Retrying in ${this.retryDelay / 1000}s...`);
               await this.sleep(this.retryDelay);
             } else {
-              console.error(`   ❌ Max retries exceeded for year ${year}`);
+              console.error(`   Max retries exceeded for year ${year}`);
               batchStats.errors += groupRecords.length;
             }
           }
@@ -148,7 +148,7 @@ class DataMigrationService {
 
       return batchStats;
     } catch (error) {
-      console.error(`❌ Batch processing error:`, error);
+      console.error(`Batch processing error:`, error);
       batchStats.errors += batchStats.processed;
       return batchStats;
     }
@@ -207,13 +207,13 @@ class DataMigrationService {
       // Get archived record count from S3
       const archivedCount = await this.s3ArchiveService.getArchivedCount(tableName);
       
-      console.log(`✅ Verification completed:`);
+      console.log(`Verification completed:`);
       console.log(`   - Records remaining in MySQL: ${remainingCount}`);
       console.log(`   - Records archived in S3: ${archivedCount}`);
 
       return remainingCount === 0;
     } catch (error) {
-      console.error('❌ Verification failed:', error);
+      console.error('Verification failed:', error);
       return false;
     }
   }
@@ -231,7 +231,7 @@ class DataMigrationService {
       console.log('   Consider implementing based on your specific requirements');
       
       if (options.confirm !== true) {
-        console.log('❌ Rollback cancelled. Use { confirm: true } to proceed.');
+        console.log('Rollback cancelled. Use { confirm: true } to proceed.');
         return false;
       }
 
@@ -243,7 +243,7 @@ class DataMigrationService {
       console.log('🚧 Rollback functionality not implemented in this example');
       return false;
     } catch (error) {
-      console.error('❌ Rollback failed:', error);
+      console.error('Rollback failed:', error);
       throw error;
     }
   }
@@ -298,7 +298,7 @@ Examples:
     switch (command) {
       case 'migrate':
         if (!tableName) {
-          console.error('❌ Table name is required for migration');
+          console.error('Table name is required for migration');
           process.exit(1);
         }
         await migrationService.migrate(tableName, { dryRun: isDryRun });
@@ -306,7 +306,7 @@ Examples:
 
       case 'verify':
         if (!tableName) {
-          console.error('❌ Table name is required for verification');
+          console.error('Table name is required for verification');
           process.exit(1);
         }
         const isValid = await migrationService.verifyMigration(tableName);
@@ -315,21 +315,21 @@ Examples:
 
       case 'rollback':
         if (!tableName) {
-          console.error('❌ Table name is required for rollback');
+          console.error('Table name is required for rollback');
           process.exit(1);
         }
         await migrationService.rollback(tableName, { confirm: true });
         break;
 
       default:
-        console.error(`❌ Unknown command: ${command}`);
+        console.error(`Unknown command: ${command}`);
         process.exit(1);
     }
 
-    console.log('\n🎉 Operation completed successfully!');
+    console.log('\nOperation completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('\n❌ Operation failed:', error.message);
+    console.error('\nOperation failed:', error.message);
     process.exit(1);
   }
 }

@@ -30,6 +30,7 @@
     "joi": "^17.9.2",
     "json2csv": "^6.0.0-alpha.2",
     "moment": "^2.29.4",
+    "moment-timezone": "^0.5.48",
     "mysql2": "^3.6.0",
     "parquetjs": "^0.11.2",
     "winston": "^3.10.0"

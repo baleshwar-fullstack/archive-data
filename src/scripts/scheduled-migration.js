@@ -30,7 +30,7 @@ class ScheduledMigrationCLI {
         console.log(`📅 Next run: ${result.nextRun}`);
         process.exit(0);
       } else if (result.success) {
-        console.log('✅ Scheduled migration completed successfully');
+        console.log('Scheduled migration completed successfully');
         console.log(`📊 Summary:`);
         console.log(`   - Duration: ${result.duration}s`);
         console.log(`   - Tables processed: ${Object.keys(result.results).length}`);
@@ -38,12 +38,12 @@ class ScheduledMigrationCLI {
         console.log(`   - Log file: ${result.logFile}`);
         process.exit(0);
       } else {
-        console.error('❌ Scheduled migration failed');
+        console.error('Scheduled migration failed');
         console.error(`📊 Results:`, result.results);
         process.exit(1);
       }
     } catch (error) {
-      console.error('❌ Critical error in scheduled migration:', error.message);
+      console.error('Critical error in scheduled migration:', error.message);
       console.error(error.stack);
       process.exit(1);
     }
@@ -58,7 +58,7 @@ class ScheduledMigrationCLI {
       
       console.log('📊 Scheduled Migration Status');
       console.log('=' * 40);
-      console.log(`Enabled: ${status.enabled ? '✅' : '❌'}`);
+      console.log(`Enabled: ${status.enabled ? 'Enabled' : 'Disabled'}`);
       console.log(`Currently Running: ${status.isRunning ? '🔄' : '⏸️'}`);
       console.log(`Schedule Interval: ${status.schedule.intervalMonths} months`);
       console.log(`Tables: ${status.tables.join(', ')}`);
@@ -74,7 +74,7 @@ class ScheduledMigrationCLI {
         console.log(`Time Until Next: ${status.schedule.timeUntilNextRun}`);
       }
       
-      console.log(`Should Run Now: ${status.schedule.shouldRun ? '✅' : '❌'}`);
+      console.log(`Should Run Now: ${status.schedule.shouldRun ? 'Yes' : 'No'}`);
       
       if (status.isRunning && status.lockInfo) {
         console.log('\n🔒 Current Migration Lock:');
@@ -89,7 +89,7 @@ class ScheduledMigrationCLI {
       console.log(`   Retry Delay: ${status.configuration.retryDelayMinutes} minutes`);
       
     } catch (error) {
-      console.error('❌ Error getting status:', error.message);
+      console.error('Error getting status:', error.message);
       process.exit(1);
     }
   }
@@ -103,15 +103,15 @@ class ScheduledMigrationCLI {
       const result = await this.scheduler.forceRunMigration();
       
       if (result.success) {
-        console.log('✅ Force migration completed successfully');
+        console.log('Force migration completed successfully');
         console.log(`📊 Duration: ${result.duration}s`);
       } else {
-        console.error('❌ Force migration failed');
+        console.error('Force migration failed');
         console.error(result.results);
         process.exit(1);
       }
     } catch (error) {
-      console.error('❌ Error in force migration:', error.message);
+      console.error('Error in force migration:', error.message);
       process.exit(1);
     }
   }
@@ -122,13 +122,13 @@ class ScheduledMigrationCLI {
   async toggle(enabled) {
     try {
       const config = this.scheduler.updateConfig({ enabled });
-      console.log(`${enabled ? '✅ Enabled' : '❌ Disabled'} scheduled migration`);
+      console.log(`${enabled ? 'Enabled' : 'Disabled'} scheduled migration`);
       
       if (enabled && config.nextRun) {
         console.log(`📅 Next run: ${new Date(config.nextRun).toLocaleString()}`);
       }
     } catch (error) {
-      console.error('❌ Error toggling migration:', error.message);
+      console.error('Error toggling migration:', error.message);
       process.exit(1);
     }
   }
@@ -142,7 +142,7 @@ class ScheduledMigrationCLI {
       console.log(`⏰ Updated schedule interval to ${months} months`);
       console.log(`📅 Next run: ${new Date(config.nextRun).toLocaleString()}`);
     } catch (error) {
-      console.error('❌ Error updating interval:', error.message);
+      console.error('Error updating interval:', error.message);
       process.exit(1);
     }
   }
@@ -170,7 +170,7 @@ class ScheduledMigrationCLI {
         console.log('');
       });
     } catch (error) {
-      console.error('❌ Error getting logs:', error.message);
+      console.error('Error getting logs:', error.message);
       process.exit(1);
     }
   }
@@ -192,17 +192,17 @@ class ScheduledMigrationCLI {
       
       // Test configuration
       const status = this.scheduler.getStatus();
-      console.log('⚙️  Configuration valid ✅');
+      console.log('⚙️  Configuration valid');
       
       console.log('\n📋 Current Configuration:');
       console.log(`   Tables: ${status.tables.join(', ')}`);
       console.log(`   Interval: ${status.schedule.intervalMonths} months`);
       console.log(`   Batch Size: ${status.configuration.batchSize}`);
       
-      console.log('\n✅ All tests passed');
+      console.log('\nAll tests passed');
       
     } catch (error) {
-      console.error('❌ Test failed:', error.message);
+      console.error('Test failed:', error.message);
       process.exit(1);
     }
   }
@@ -297,7 +297,7 @@ Examples:
       case 'interval':
         const months = parseInt(args[1]);
         if (!months || months < 1) {
-          console.error('❌ Please provide a valid number of months (e.g., 6)');
+          console.error('Please provide a valid number of months (e.g., 6)');
           process.exit(1);
         }
         await cli.setInterval(months);
@@ -317,11 +317,11 @@ Examples:
         break;
         
       default:
-        console.error(`❌ Unknown command: ${command}`);
+        console.error(`Unknown command: ${command}`);
         process.exit(1);
     }
   } catch (error) {
-    console.error('❌ Command failed:', error.message);
+    console.error('Command failed:', error.message);
     process.exit(1);
   }
 }

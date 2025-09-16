@@ -102,7 +102,7 @@ class AthenaService {
         // Get query results directly from Athena API
         const results = await this.getQueryResults(queryExecutionId);
         
-        console.log(`✅ Athena query completed: ${results.length} rows returned`);
+        console.log(`Athena query completed: ${results.length} rows returned`);
         
         // IMMEDIATE CLEANUP: Delete S3 result files right after getting data
         if (this.immediateCleanup) {
@@ -231,7 +231,7 @@ class AthenaService {
       const csvKey = `${this.s3OutputPrefix}${queryExecutionId}.csv`;
       const metadataKey = `${this.s3OutputPrefix}${queryExecutionId}.csv.metadata`;
       
-      console.log(`🗑️ Cleaning up query results for ${queryExecutionId}...`);
+      console.log(`Cleaning up query results for ${queryExecutionId}...`);
       
       // Delete both result and metadata files in parallel
       const deletePromises = [
@@ -247,7 +247,7 @@ class AthenaService {
       
       await Promise.all(deletePromises);
       
-      console.log(`✅ Query result files cleaned up successfully`);
+      console.log(`Query result files cleaned up successfully`);
       
     } catch (error) {
       console.warn(`⚠️ Cleanup warning for ${queryExecutionId}:`, error.message);
@@ -415,7 +415,7 @@ class AthenaService {
       // Execute the CREATE TABLE statement
       const result = await this.executeQuery(ddl);
       
-      console.log('✅ Athena table created successfully');
+      console.log('Athena table created successfully');
       return result;
     } catch (error) {
       console.error('Error creating Athena table:', error);
