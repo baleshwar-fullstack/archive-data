@@ -360,24 +360,25 @@ class S3ArchiveService {
               transformed[key] = m.utc().toDate();
             }
           } catch (_) {
-            // Fallback to native Date if timezone parse failed
             transformed[key] = new Date(value);
           }
         }
-      } else if (key === 'submission_date') {
-        // Parquet DATE logical type expects INT32 days since epoch
-        if (value) {
+      } else if (key === 'submission_date' && value) {
           const m = this.safeMoment(value);
           if (m) {
-            const daysSinceEpoch = Math.floor(m.startOf('day').diff(moment.utc('1970-01-01'), 'days'));
+            const epochMoment = moment('1970-01-01');
+            const daysSinceEpoch = m.startOf('day').diff(epochMoment, 'days');
             transformed[key] = daysSinceEpoch;
           } else {
-            const d = new Date(value);
-            const utcY = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-            transformed[key] = Math.floor(utcY / 86400000);
+            const fallbackMoment = moment(value);
+            if (fallbackMoment.isValid()) {
+              const epochMoment = moment('1970-01-01');
+              const daysSinceEpoch = fallbackMoment.startOf('day').diff(epochMoment, 'days');
+              transformed[key] = daysSinceEpoch;
           }
         }
-      } else if ((lowerKey.includes('date') || lowerKey.includes('time')) && lowerKey !== 'timezone') {
+      } 
+      else if ((lowerKey.includes('date') || lowerKey.includes('time')) && lowerKey !== 'timezone') {
         if (typeof value === 'string') {
           transformed[key] = new Date(value);
         } else if (moment.isMoment(value)) {
@@ -385,7 +386,6 @@ class S3ArchiveService {
         }
       }
       
-      // Ensure numeric IDs are proper integers
       if ((key === 'id' || key.endsWith('_id')) && typeof value === 'string') {
         transformed[key] = parseInt(value, 10);
       }
