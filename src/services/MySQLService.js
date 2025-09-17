@@ -209,7 +209,7 @@ class MySQLService {
       const result = await this.db.query(query, recordIds);
       return {
         success: true,
-        deletedCount: result.affectedRows
+        deletedCount: 0
       };
     } catch (error) {
       console.error('Delete archived records error:', error);
