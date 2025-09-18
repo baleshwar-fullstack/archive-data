@@ -12,12 +12,12 @@ class S3ArchiveService {
     this.bucket = awsConfig.getBucketName();
     this.prefix = awsConfig.getArchivePrefix();
     this.tempDir = path.join(os.tmpdir(), 'parquet-archive');
-    
+
     // Ensure temp directory exists
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
     }
-    
+
     // Clean up any existing temp files on startup
     this.cleanupTempDirectory();
   }
@@ -41,7 +41,7 @@ class S3ArchiveService {
       if (fs.existsSync(this.tempDir)) {
         const files = fs.readdirSync(this.tempDir);
         const now = Date.now();
-        
+
         for (const file of files) {
           const filePath = path.join(this.tempDir, file);
           try {
@@ -65,7 +65,7 @@ class S3ArchiveService {
    */
   cleanupTempFile(tempFilePath, suppressLogs = false) {
     if (!tempFilePath) return;
-    
+
     try {
       if (fs.existsSync(tempFilePath)) {
         fs.unlinkSync(tempFilePath);
@@ -90,7 +90,7 @@ class S3ArchiveService {
       updated_at: { type: 'TIMESTAMP_MILLIS', optional: false },
       day_forecast: { type: 'UTF8', optional: false },
       timezone: { type: 'UTF8', optional: true },
-      
+
       // Archive metadata fields (year-based partitioning)
       archive_year: { type: 'INT32', optional: false },
       archive_date: { type: 'TIMESTAMP_MILLIS', optional: false }
@@ -128,16 +128,16 @@ class S3ArchiveService {
    */
   getDynamicParquetSchema(tableName, sampleRecord) {
     const schemaFields = {};
-    
+
     // Add archive metadata (year-based partitioning only)
     schemaFields.archive_year = { type: 'INT32', optional: false };
     schemaFields.archive_date = { type: 'TIMESTAMP_MILLIS', optional: false };
-    
+
     // Infer field types from sample record
     Object.keys(sampleRecord).forEach(field => {
       const value = sampleRecord[field];
       const lowerField = String(field).toLowerCase();
-      
+
       if (field === 'id' || field.endsWith('_id')) {
         schemaFields[field] = { type: 'INT64', optional: false };
       } else if (lowerField === 'timezone') {
@@ -145,9 +145,9 @@ class S3ArchiveService {
         schemaFields[field] = { type: 'UTF8', optional: true };
       } else if (typeof value === 'number') {
         // Check if it's an integer or float
-        schemaFields[field] = { 
-          type: Number.isInteger(value) ? 'INT32' : 'DOUBLE', 
-          optional: true 
+        schemaFields[field] = {
+          type: Number.isInteger(value) ? 'INT32' : 'DOUBLE',
+          optional: true
         };
       } else if (value instanceof Date || moment.isDate(value) || moment.isMoment(value)) {
         schemaFields[field] = { type: 'TIMESTAMP_MILLIS', optional: true };
@@ -169,7 +169,7 @@ class S3ArchiveService {
    */
   async archiveData(tableName, data, providedYear = null) {
     let tempFilePath = null;
-    
+
     try {
       if (!Array.isArray(data) || data.length === 0) {
         return { success: true, archivedCount: 0 };
@@ -177,7 +177,7 @@ class S3ArchiveService {
 
       // Auto-detect year from data if not provided
       const year = providedYear || this.detectYearFromData(data);
-      
+
       console.log(`Creating Parquet file for ${data.length} records (Year ${year})...`);
 
       // Create year-based partition path with smart redundancy detection
@@ -205,7 +205,7 @@ class S3ArchiveService {
 
       // Prepare and write data
       const archiveTimestamp = new Date();
-      
+
       for (const record of data) {
         // Transform the record for Parquet (year-based partitioning)
         const parquetRecord = this.transformRecordForParquet(record, year, archiveTimestamp);
@@ -276,7 +276,7 @@ class S3ArchiveService {
     const tablePrefix = this.getTablePrefix(tableName);
     const prefix = tablePrefix.toLowerCase();
     const table = tableName.toLowerCase();
-    
+
     // Check for redundancy patterns
     const isRedundant = (
       // Direct match: "weather-reports/" + "weather_reports"
@@ -284,7 +284,7 @@ class S3ArchiveService {
       // Or if prefix ends with table name pattern
       (prefix.replace(/[-_]/g, '').includes(table.replace(/[-_]/g, '')))
     );
-    
+
     if (isRedundant) {
       // Skip table name to avoid duplication
       return tablePrefix;
@@ -301,12 +301,12 @@ class S3ArchiveService {
   buildPartitionPath(tableName, year) {
     const basePrefix = this.buildBasePrefix(tableName);
     const fullPath = `${basePrefix}year=${year}/`;
-    
+
     // Log only when redundancy is detected
     if (basePrefix === this.getTablePrefix(tableName)) {
       // redundancy detected; using compact base prefix
     }
-    
+
     return fullPath;
   }
 
@@ -349,35 +349,30 @@ class S3ArchiveService {
     Object.keys(transformed).forEach(key => {
       const value = transformed[key];
       const lowerKey = String(key).toLowerCase();
-      
-      // Convert created_at/updated_at using row timezone to UTC
-      if ((key === 'created_at' || key === 'updated_at')) {
+      if ((key === 'created_at' || key === 'updated_at') && value) {
         const tz = (transformed.timezone && String(transformed.timezone)) || 'America/Los_Angeles';
-        if (value) {
-          try {
-            const m = moment.tz(value, tz);
-            if (m.isValid()) {
-              transformed[key] = m.utc().toDate();
-            }
-          } catch (_) {
-            transformed[key] = new Date(value);
-          }
+        const m = moment.tz(value, tz);
+        if (m.isValid()) {
+          transformed[key] = m.utc().toDate();
+        }
+        else {
+          transformed[key] = new Date(value);
         }
       } else if (key === 'submission_date' && value) {
-          const m = this.safeMoment(value);
-          if (m) {
+        const m = this.safeMoment(value);
+        if (m) {
+          const epochMoment = moment('1970-01-01');
+          const daysSinceEpoch = m.startOf('day').diff(epochMoment, 'days');
+          transformed[key] = daysSinceEpoch;
+        } else {
+          const fallbackMoment = moment(value);
+          if (fallbackMoment.isValid()) {
             const epochMoment = moment('1970-01-01');
-            const daysSinceEpoch = m.startOf('day').diff(epochMoment, 'days');
+            const daysSinceEpoch = fallbackMoment.startOf('day').diff(epochMoment, 'days');
             transformed[key] = daysSinceEpoch;
-          } else {
-            const fallbackMoment = moment(value);
-            if (fallbackMoment.isValid()) {
-              const epochMoment = moment('1970-01-01');
-              const daysSinceEpoch = fallbackMoment.startOf('day').diff(epochMoment, 'days');
-              transformed[key] = daysSinceEpoch;
           }
         }
-      } 
+      }
       else if ((lowerKey.includes('date') || lowerKey.includes('time')) && lowerKey !== 'timezone') {
         if (typeof value === 'string') {
           transformed[key] = new Date(value);
@@ -385,7 +380,7 @@ class S3ArchiveService {
           transformed[key] = value.toDate();
         }
       }
-      
+
       if ((key === 'id' || key.endsWith('_id')) && typeof value === 'string') {
         transformed[key] = parseInt(value, 10);
       }
@@ -430,7 +425,7 @@ class S3ArchiveService {
 
       // List Parquet objects in the archive
       const listResponse = await this.s3.listObjectsV2(listParams).promise();
-      
+
       if (!listResponse.Contents || listResponse.Contents.length === 0) {
         return {
           success: true,
@@ -441,10 +436,10 @@ class S3ArchiveService {
       }
 
       // Filter for Parquet files only and by date if needed
-      const parquetObjects = listResponse.Contents.filter(obj => 
+      const parquetObjects = listResponse.Contents.filter(obj =>
         obj.Key.endsWith('.parquet')
       );
-      
+
       const relevantObjects = this.filterObjectsByDate(parquetObjects, filters);
 
       // files to query count
@@ -456,7 +451,7 @@ class S3ArchiveService {
 
       // Retrieve and combine data from relevant Parquet objects
       const allData = [];
-      
+
       for (const obj of relevantObjects) {
         try {
           const objData = await this.getParquetObjectData(obj.Key);
@@ -495,11 +490,11 @@ class S3ArchiveService {
    */
   async getParquetObjectData(key) {
     let tempFilePath = null;
-    
+
     try {
       // Download Parquet file to temporary location
       tempFilePath = path.join(this.tempDir, `temp_${Date.now()}.parquet`);
-      
+
       const params = {
         Bucket: this.bucket,
         Key: key
@@ -511,10 +506,10 @@ class S3ArchiveService {
       // Read Parquet file
       const reader = await parquet.ParquetReader.openFile(tempFilePath);
       const cursor = reader.getCursor();
-      
+
       const records = [];
       let record = null;
-      
+
       while (record = await cursor.next()) {
         // Convert timestamps back to proper format
         const processedRecord = this.processParquetRecord(record);
@@ -550,7 +545,7 @@ class S3ArchiveService {
 
       const response = await this.s3.getObject(params).promise();
       const jsonData = JSON.parse(response.Body.toString());
-      
+
       // Handle legacy JSON format
       return jsonData.data || jsonData;
     } catch (error) {
@@ -568,7 +563,7 @@ class S3ArchiveService {
     // Convert timestamp fields back to ISO strings for consistency
     Object.keys(processed).forEach(key => {
       const value = processed[key];
-      
+
       if (value instanceof Date) {
         processed[key] = value.toISOString();
       }
@@ -627,7 +622,7 @@ class S3ArchiveService {
       processedData.sort((a, b) => {
         const aVal = a[options.orderBy];
         const bVal = b[options.orderBy];
-        
+
         if (options.orderDirection === 'DESC') {
           return bVal > aVal ? 1 : -1;
         } else {
@@ -654,24 +649,24 @@ class S3ArchiveService {
     if (!dateInput || dateInput === 'undefined' || dateInput === 'null') {
       return false;
     }
-    
+
     // Check for problematic string values
     if (typeof dateInput === 'string') {
       const trimmed = dateInput.trim();
-      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' || 
-          trimmed.includes('invalid') || trimmed.includes('Invalid')) {
+      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' ||
+        trimmed.includes('invalid') || trimmed.includes('Invalid')) {
         return false;
       }
-      
+
       // Basic date format check (YYYY-MM-DD or similar)
       const basicDatePattern = /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/;
       const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-      
+
       if (!basicDatePattern.test(trimmed) && !isoPattern.test(trimmed)) {
         return false;
       }
     }
-    
+
     return true;
   }
 
@@ -683,7 +678,7 @@ class S3ArchiveService {
     if (!this.isValidDateInput(dateInput)) {
       return null;
     }
-    
+
     try {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
@@ -700,7 +695,7 @@ class S3ArchiveService {
     const years = [];
     const currentYear = moment().year();
     const cutoffYear = moment().subtract(this.archiveThresholdYears || 2, 'years').year();
-    
+
     // Safely parse start date
     const startMoment = this.safeMoment(startDate);
     if (!startMoment) {
@@ -711,7 +706,7 @@ class S3ArchiveService {
       }
       return years;
     }
-    
+
     // Safely parse end date
     const endMoment = this.safeMoment(endDate);
     if (!endMoment) {
@@ -723,10 +718,10 @@ class S3ArchiveService {
       }
       return years;
     }
-    
+
     const startYear = startMoment.year();
     const endYear = endMoment.year();
-    
+
     // Ensure start year is not after end year
     if (startYear > endYear) {
       console.warn(`startYear (${startYear}) is after endYear (${endYear}), swapping dates`);
@@ -738,7 +733,7 @@ class S3ArchiveService {
         years.push(year);
       }
     }
-    
+
     // year ranges selected for query
     return years;
   }
@@ -750,7 +745,7 @@ class S3ArchiveService {
     if (yearRanges.length === 1) {
       return `${this.getTablePrefix(tableName)}${tableName}/year=${yearRanges[0]}/`;
     }
-    
+
     // For multiple year ranges, use the base table prefix
     return `${this.getTablePrefix(tableName)}${tableName}/`;
   }
@@ -808,12 +803,12 @@ class S3ArchiveService {
     const cutoffDate = moment().subtract(2, 'years').format('YYYY-MM-DD HH:mm:ss');
     const endMoment = this.safeMoment(endDate);
     const cutoffMoment = moment(cutoffDate);
-    
+
     let finalEndDate = endDate;
     if (endMoment) {
       finalEndDate = moment.min(endMoment, cutoffMoment).format('YYYY-MM-DD HH:mm:ss');
     }
-    
+
     return {
       startDate: startDate,
       endDate: finalEndDate
@@ -826,7 +821,7 @@ class S3ArchiveService {
    */
   generateAthenaTableDDL(tableName, databaseName = 'weather_archive') {
     const location = `s3://${this.bucket}/${this.getTablePrefix(tableName)}${tableName}/`;
-    
+
     if (tableName === 'weather_reports') {
       return `
 CREATE EXTERNAL TABLE IF NOT EXISTS ${databaseName}.${tableName}_archive (
@@ -939,10 +934,10 @@ TBLPROPERTIES (
 
       if (parquetFiles.length > 0) {
         stats.avgFileSize = Math.round(stats.totalSize / parquetFiles.length);
-        stats.oldestFile = parquetFiles.reduce((oldest, file) => 
+        stats.oldestFile = parquetFiles.reduce((oldest, file) =>
           file.LastModified < oldest.LastModified ? file : oldest
         ).LastModified;
-        stats.newestFile = parquetFiles.reduce((newest, file) => 
+        stats.newestFile = parquetFiles.reduce((newest, file) =>
           file.LastModified > newest.LastModified ? file : newest
         ).LastModified;
       }
@@ -967,7 +962,7 @@ TBLPROPERTIES (
         files.forEach(file => {
           const filePath = path.join(this.tempDir, file);
           const stats = fs.statSync(filePath);
-          
+
           if (now - stats.mtime.getTime() > maxAge) {
             fs.unlinkSync(filePath);
           }
