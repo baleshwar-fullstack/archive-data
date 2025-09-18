@@ -179,6 +179,7 @@ class MySQLService {
         FROM ${tableName} t
         LEFT JOIN projects p ON p.id = t.project_id
         WHERE t.created_at < ?
+        AND YEAR(t.created_at) = 2022
         ORDER BY t.created_at ASC
         LIMIT ${limit} OFFSET ${offsetInt}
       `;
