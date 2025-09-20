@@ -175,7 +175,7 @@ class DataMigrationService {
   async getTotalRecordsToMigrate(tableName) {
     try {
       const cutoffDate = this.mysqlService.getArchiveCutoffDate();
-      const query = `SELECT COUNT(*) as count FROM ${tableName} WHERE created_at < ? AND YEAR(created_at) = 2022`;
+      const query = `SELECT COUNT(*) as count FROM ${tableName} WHERE created_at < ?`;
       const result = await this.mysqlService.db.query(query, [cutoffDate]);
       return result[0].count;
     } catch (error) {

@@ -4,7 +4,7 @@
   "description": "Node.js implementation of tiered data storage with MySQL and S3 Glacier",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js",
+    "app": "node src/app.js",
     "dev": "nodemon src/app.js",
     "migrate": "node src/scripts/migrate-old-data.js",
     "migrate:weather": "node src/scripts/migrate-old-data.js migrate weather_reports",
@@ -16,6 +16,10 @@
     "migration:trigger": "node src/scripts/scheduled-migration.js force",
     "migration:logs": "node src/scripts/scheduled-migration.js logs",
     "migration:cron": "node src/scripts/scheduled-migration.js cron",
+    "start": "pm2 start ecosystem-simple.config.js",
+    "logs": "pm2 logs weather-migration",
+    "status": "pm2 status",
+    "stop": "pm2 stop weather-migration",
     "test": "jest"
   },
   "dependencies": {
