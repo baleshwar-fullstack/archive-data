@@ -50,7 +50,7 @@ class AthenaService {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
     } catch (error) {
-      console.warn(`⚠️  Moment parsing error in Athena for "${dateInput}":`, error.message);
+      console.warn(`Moment parsing error in Athena for "${dateInput}":`, error.message);
       return null;
     }
   }
@@ -61,7 +61,7 @@ class AthenaService {
   getYearFromDate(dateString, defaultYear = null) {
     const dateMoment = this.safeMoment(dateString);
     if (!dateMoment) {
-      console.warn(`⚠️  Invalid date in Athena query: ${dateString}, using default year: ${defaultYear}`);
+      console.warn(`Invalid date in Athena query: ${dateString}, using default year: ${defaultYear}`);
       return defaultYear;
     }
     
@@ -76,7 +76,7 @@ class AthenaService {
     let queryExecutionId = null;
     
     try {
-      console.log('🔍 Executing Athena query on Parquet data...');
+      console.log('Executing Athena query on Parquet data...');
       
       const params = {
         QueryString: sql,
@@ -93,7 +93,7 @@ class AthenaService {
       const startResult = await this.athena.startQueryExecution(params).promise();
       queryExecutionId = startResult.QueryExecutionId;
       
-      console.log(`📊 Query started with ID: ${queryExecutionId}`);
+      console.log(`Query started with ID: ${queryExecutionId}`);
 
       // Wait for query completion
       const queryResult = await this.waitForQueryCompletion(queryExecutionId, options.timeout);
@@ -250,17 +250,18 @@ class AthenaService {
       console.log(`Query result files cleaned up successfully`);
       
     } catch (error) {
-      console.warn(`⚠️ Cleanup warning for ${queryExecutionId}:`, error.message);
+      console.warn(`Cleanup warning for ${queryExecutionId}:`, error.message);
       // Don't fail the query if cleanup fails - just warn
     }
   }
 
   /**
-   * Query weather reports with Athena (optimized for year-partitioned Parquet)
+   * Query archived data with Athena (optimized for year-partitioned Parquet)
+   * Supports both weather_reports and project_hours tables
    */
-  async queryWeatherReports(filters = {}, options = {}) {
+  async queryArchivedData(tableName, filters = {}, options = {}) {
     try {
-      let sql = `SELECT * FROM ${this.databaseName}.weather_reports_archive`;
+      let sql = `SELECT * FROM ${this.databaseName}.${tableName}_archive`;
       const conditions = [];
       
       // Add year-based partition pruning (more efficient)
@@ -278,36 +279,33 @@ class AthenaService {
         }
       }
 
-      // Add project filter
+      // Add project filter (common to both tables)
       if (filters.projectId) {
         conditions.push(`project_id = ${filters.projectId}`);
       }
 
-      // Add quarter filter
-      if (filters.quarters && Array.isArray(filters.quarters)) {
+      // Add table-specific filters
+      if (tableName === 'weather_reports' && filters.quarters && Array.isArray(filters.quarters)) {
         const quarterList = filters.quarters.map(q => `'${q}'`).join(',');
         conditions.push(`quarter IN (${quarterList})`);
       }
 
-      // Add precise date range filter within records using row timezone if available
+      // Add precise date range filter
       if (filters.startDate) {
-        conditions.push(`at_timezone(created_at, COALESCE(timezone, 'UTC')) >= at_timezone(TIMESTAMP '${filters.startDate}', COALESCE(timezone, 'UTC'))`);
+        conditions.push(`created_at >= TIMESTAMP '${filters.startDate}'`);
       }
       
       if (filters.endDate) {
-        conditions.push(`at_timezone(created_at, COALESCE(timezone, 'UTC')) <= at_timezone(TIMESTAMP '${filters.endDate}', COALESCE(timezone, 'UTC'))`);
+        conditions.push(`created_at <= TIMESTAMP '${filters.endDate}'`);
       }
 
       if (conditions.length > 0) {
         sql += ` WHERE ${conditions.join(' AND ')}`;
       }
 
-      // Add ordering (respect row timezone when ordering by created_at)
+      // Add ordering
       if (options.orderBy) {
-        const orderField = options.orderBy === 'created_at'
-          ? `at_timezone(created_at, COALESCE(timezone, 'UTC'))`
-          : options.orderBy;
-        sql += ` ORDER BY ${orderField}`;
+        sql += ` ORDER BY ${options.orderBy}`;
         if (options.orderDirection) {
           sql += ` ${options.orderDirection}`;
         }
@@ -318,21 +316,22 @@ class AthenaService {
         sql += ` LIMIT ${options.limit}`;
       }
 
-      console.log(`🔍 Athena SQL (Year-partitioned): ${sql}`);
+      console.log(`Athena SQL (${tableName}): ${sql}`);
 
       return await this.executeQuery(sql, options);
     } catch (error) {
-      console.error('Weather reports Athena query error:', error);
+      console.error(`${tableName} Athena query error:`, error);
       throw error;
     }
   }
 
   /**
-   * Get weather reports count with Athena (year-partitioned)
+   * Get archived data count with Athena (year-partitioned)
+   * Supports both weather_reports and project_hours tables
    */
-  async getWeatherReportsCount(filters = {}) {
+  async getArchivedCount(tableName, filters = {}) {
     try {
-      let sql = `SELECT COUNT(*) as total_count FROM ${this.databaseName}.weather_reports_archive`;
+      let sql = `SELECT COUNT(*) as total_count FROM ${this.databaseName}.${tableName}_archive`;
       const conditions = [];
       
       // Add year-based partition filters
@@ -363,62 +362,29 @@ class AthenaService {
       const result = await this.executeQuery(sql);
       return parseInt(result.data[0]?.total_count || '0', 10);
     } catch (error) {
-      console.error('Weather reports count Athena query error:', error);
+      console.error(`${tableName} count Athena query error:`, error);
       throw error;
     }
   }
 
   /**
-   * Analyze weather patterns by quarter (example analytical query)
+   * Create or update Athena table for archived data
+   * Supports both weather_reports and project_hours tables
    */
-  async analyzeWeatherPatterns(filters = {}) {
+  async createArchivedTable(tableName, s3ArchiveService) {
     try {
-      let sql = `
-        SELECT 
-          quarter,
-          COUNT(*) as report_count,
-          COUNT(DISTINCT project_id) as unique_projects,
-          EXTRACT(YEAR FROM created_at) as year,
-          AVG(LENGTH(day_forecast)) as avg_forecast_length
-        FROM ${this.databaseName}.weather_reports_archive
-      `;
-
-      const conditions = [];
+      const ddl = s3ArchiveService.generateAthenaTableDDL(tableName, this.databaseName);
       
-      if (filters.startDate && filters.endDate) {
-        conditions.push(`created_at BETWEEN TIMESTAMP '${filters.startDate}' AND TIMESTAMP '${filters.endDate}'`);
-      }
-
-      if (conditions.length > 0) {
-        sql += ` WHERE ${conditions.join(' AND ')}`;
-      }
-
-      sql += ` GROUP BY quarter, EXTRACT(YEAR FROM created_at) ORDER BY year, quarter`;
-
-      return await this.executeQuery(sql);
-    } catch (error) {
-      console.error('Weather pattern analysis error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Create or update Athena table for weather reports
-   */
-  async createWeatherReportsTable(s3ArchiveService) {
-    try {
-      const ddl = s3ArchiveService.generateAthenaTableDDL('weather_reports', this.databaseName);
-      
-      console.log('📋 Creating Athena table for weather_reports...');
+      console.log(`Creating Athena table for ${tableName}...`);
       console.log(ddl);
       
       // Execute the CREATE TABLE statement
       const result = await this.executeQuery(ddl);
       
-      console.log('Athena table created successfully');
+      console.log(`Athena table ${tableName} created successfully`);
       return result;
     } catch (error) {
-      console.error('Error creating Athena table:', error);
+      console.error(`Error creating Athena table ${tableName}:`, error);
       throw error;
     }
   }

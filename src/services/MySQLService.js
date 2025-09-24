@@ -52,7 +52,7 @@ class MySQLService {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
     } catch (error) {
-      console.warn(`⚠️  Moment parsing error in MySQLService for "${dateInput}":`, error.message);
+      console.warn(`Moment parsing error in MySQLService for "${dateInput}":`, error.message);
       return null;
     }
   }
@@ -63,7 +63,7 @@ class MySQLService {
   safeParseDate(dateString, fallback = null) {
     const parsedDate = this.safeMoment(dateString);
     if (!parsedDate) {
-      console.warn(`⚠️  Invalid date in MySQLService: ${dateString}, using fallback`);
+      console.warn(`Invalid date in MySQLService: ${dateString}, using fallback`);
       return fallback;
     }
     
@@ -239,7 +239,7 @@ class MySQLService {
     const end = this.safeParseDate(endDate);
 
     if (!start || !end) {
-      console.warn(`⚠️  Invalid dates for hybrid query check: start=${startDate}, end=${endDate}`);
+      console.warn(`Invalid dates for hybrid query check: start=${startDate}, end=${endDate}`);
       return false;
     }
 
@@ -255,7 +255,7 @@ class MySQLService {
     const cutoffMoment = moment(cutoffDate);
     
     if (!startMoment) {
-      console.warn(`⚠️  Invalid startDate for filtering: ${startDate}, using cutoff date`);
+      console.warn(`Invalid startDate for filtering: ${startDate}, using cutoff date`);
       return {
         startDate: cutoffDate,
         endDate: endDate

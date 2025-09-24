@@ -30,7 +30,7 @@ class DataMigrationService {
     try {
       // Get initial count of records to migrate
       const totalRecords = await this.getTotalRecordsToMigrate(tableName);
-      console.log(`📋 Total records to migrate: ${totalRecords}`);
+      console.log(`Total records to migrate: ${totalRecords}`);
 
       if (totalRecords === 0) {
         console.log('No records to migrate.');

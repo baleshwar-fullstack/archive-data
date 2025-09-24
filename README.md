@@ -1,29 +1,29 @@
-# Weather Data Tiered Storage System
+# AWS Lambda Migration Scheduler
 
-A Node.js application for automatically archiving old weather data from MySQL to AWS S3 Glacier Instant Retrieval, with seamless query capabilities across both storage tiers.
+A serverless migration scheduler for automatically archiving old data from MySQL to AWS S3 Glacier Instant Retrieval. Supports migration of `weather_reports` and `project_hours` tables.
 
 ## 🎯 Features
 
-- **Automatic Data Archiving**: Move weather data older than 2 years to S3 Glacier
-- **Tiered Storage**: Keep recent data in MySQL for fast access, archive old data for cost savings
-- **Seamless Querying**: API automatically routes queries to appropriate storage (MySQL or S3)
-- **Parquet Optimization**: Archived data stored in optimized Parquet format for analytics
+- **Automatic Data Archiving**: Move old data from MySQL to S3 Glacier Instant Retrieval
+- **Multi-Table Support**: Migrates `weather_reports` and `project_hours` tables
+- **Scheduled Migration**: Automatic daily migration with 1-hour intervals via AWS Lambda
+- **Manual Migration**: Trigger migrations on-demand
+- **Parquet Optimization**: Archived data stored in optimized Parquet format
 - **AWS Athena Integration**: SQL analytics on archived data via Athena
-- **Scheduled Migration**: Automatic 6-month migration cycles
 - **Year-based Partitioning**: Optimized S3 structure for efficient queries
-- **Direct Results**: No permanent storage of query results - always fresh data
+- **Serverless Architecture**: Runs on AWS Lambda with no server management
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
-│   Recent Data   │    │    Archived Data     │    │    Query Layer      │
+│   Recent Data   │    │    Archived Data     │    │   Migration Layer   │
 │   (< 2 years)   │    │    (> 2 years)       │    │                     │
 │                 │    │                      │    │                     │
-│   MySQL DB      │───▶│  S3 Glacier IR       │◀───│  Smart Data Router  │
-│   - Fast access │    │  - Cost effective    │    │  - Route by date    │
-│   - Real-time   │    │  - Parquet format    │    │  - Seamless API     │
-│   - Full speed  │    │  - Year partitioned  │    │  - Athena analytics │
+│   MySQL DB      │───▶│  S3 Glacier IR       │◀───│  AWS Lambda Scheduler│
+│   - Fast access │    │  - Cost effective    │    │  - Scheduled runs    │
+│   - Real-time   │    │  - Parquet format    │    │  - Manual triggers   │
+│   - Full speed  │    │  - Year partitioned  │    │  - Athena analytics  │
 └─────────────────┘    └──────────────────────┘    └─────────────────────┘
 ```
 
@@ -80,9 +80,11 @@ npm run dev
 npm start
 ```
 
-## 📊 Weather Reports Table Structure
+## 📊 Supported Tables
 
-The system works with a `weather_reports` table:
+The system migrates the following tables:
+
+### Weather Reports Table
 ```sql
 CREATE TABLE weather_reports (
   id bigint NOT NULL AUTO_INCREMENT,
@@ -97,21 +99,46 @@ CREATE TABLE weather_reports (
 );
 ```
 
+### Project Hours Table
+```sql
+CREATE TABLE project_hours (
+  id bigint NOT NULL AUTO_INCREMENT,
+  project_id bigint NOT NULL,
+  user_id bigint NOT NULL,
+  name varchar(255) NOT NULL,
+  quantity bigint NOT NULL,
+  hours double NOT NULL,
+  total_hours double NOT NULL,
+  description text,
+  submission_date date NOT NULL,
+  to_delete int DEFAULT 0,
+  has_no_work int DEFAULT 0,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY project_id (project_id),
+  KEY created_at (created_at)
+);
+```
+
 ## 🔄 Data Migration
 
 ### Manual Migration
 ```bash
 # Preview what will be migrated (safe)
 npm run migrate:weather:dry
+npm run migrate:project_hours:dry
 
 # Execute migration
 npm run migrate:weather
+npm run migrate:project_hours
 
 # Verify migrated data
 npm run verify:weather
+npm run verify:project_hours
 ```
 
-### Scheduled Migration (Every 6 Months)
+### Scheduled Migration (Daily with 1-Hour Intervals)
 ```bash
 # Enable automatic migration
 npm run migration:enable
@@ -126,78 +153,38 @@ npm run migration:logs
 npm run migration:cron
 ```
 
-## 🔍 API Endpoints
+## 🚀 AWS Lambda Deployment
 
-### Data Access
-
-#### Get Weather Reports by Specific Date
+### Deploy to AWS Lambda
 ```bash
-# Get all reports for a specific date (simple)
-GET /api/data/weather_reports/date?date=2023-01-15
+# Deploy to development
+npm run lambda:deploy:dev
 
-# Get reports with timezone support
-GET /api/data/weather_reports/date?date=2023-01-15&timezone=America/New_York
+# Deploy to production
+npm run lambda:deploy:prod
 
-# Get reports with time precision (1-minute window)
-GET /api/data/weather_reports/date?date=2023-01-15T14:30:00&includeTime=true
-
-# Complex date query with additional filters (POST)
-POST /api/data/weather_reports/date?date=2023-01-15
-Content-Type: application/json
-{
-  "filters": {
-    "projectId": 1,
-    "quarter": "1"
-  },
-  "options": {
-    "limit": 50,
-    "orderBy": "created_at",
-    "orderDirection": "ASC"
-  }
-}
-
-# Supported date formats:
-# - YYYY-MM-DD (2023-01-15)
-# - YYYY/MM/DD (2023/01/15)  
-# - MM/DD/YYYY (01/15/2023)
-# - ISO strings (2023-01-15T14:30:00Z)
-# - Unix timestamps (1673784600)
-```
-
-#### General Data Access
-```bash
-# Get weather statistics
-GET /api/data/weather_reports/stats
-
-# Count records
-GET /api/data/weather_reports/count
-
-# Query with filters
-POST /api/data/weather_reports/search
-Content-Type: application/json
-{
-  "filters": {
-    "startDate": "2020-01-01",
-    "endDate": "2023-12-31",
-    "projectId": 1
-  },
-  "options": {
-    "limit": 100,
-    "orderBy": "created_at"
-  }
-}
-```
-
-### Migration Management
-```bash
-# Migration status
-GET /api/scheduled-migration/status
-
-# Trigger migration
-POST /api/scheduled-migration/trigger
+# Get deployment information
+npm run lambda:info:dev
 
 # View logs
-GET /api/scheduled-migration/logs
+npm run lambda:logs:dev
+```
+
+### Lambda Functions
+- **weatherReportsMigration**: Runs daily at midnight US/California time (12:00 AM)
+- **projectHoursMigration**: Runs daily at 1:00 AM US/California time (1:00 AM)
+
+### Manual Lambda Invocation
+```bash
+# Trigger weather_reports migration via Lambda
+npm run lambda:migrate:weather:dev
+
+# Trigger project_hours migration via Lambda
+npm run lambda:migrate:project_hours:dev
+
+# View logs for specific table
+npm run lambda:logs:weather:dev
+npm run lambda:logs:project_hours:dev
 ```
 
 ## 📈 Analytics with AWS Athena
@@ -206,39 +193,50 @@ GET /api/scheduled-migration/logs
 The system automatically creates Athena tables for archived data:
 
 ```sql
--- Count archived records by year
+-- Count archived records by year (weather_reports)
 SELECT archive_year, COUNT(*) as record_count
-FROM weather_archive.weather_reports_archive
+FROM archive_database.weather_reports_archive
 GROUP BY archive_year;
 
 -- Weather patterns by quarter
 SELECT quarter, COUNT(*) as reports, 
        AVG(LENGTH(day_forecast)) as avg_forecast_length
-FROM weather_archive.weather_reports_archive
+FROM archive_database.weather_reports_archive
 WHERE archive_year = 2020
 GROUP BY quarter;
 
--- Top projects by forecast volume
-SELECT project_id, COUNT(*) as forecasts
-FROM weather_archive.weather_reports_archive
+-- Count archived records by year (project_hours)
+SELECT archive_year, COUNT(*) as record_count
+FROM archive_database.project_hours_archive
+GROUP BY archive_year;
+
+-- Project hours analysis
+SELECT project_id, SUM(total_hours) as total_hours,
+       COUNT(*) as entries
+FROM archive_database.project_hours_archive
 WHERE archive_year BETWEEN 2020 AND 2022
 GROUP BY project_id
-ORDER BY forecasts DESC;
+ORDER BY total_hours DESC;
 ```
 
 ## 💾 S3 Storage Structure
 
-Archived data is organized by year for optimal performance:
+Archived data is organized by table and year for optimal performance:
 ```
-your-weather-archive-bucket/
-├── weather-reports/
-│   ├── year=2020/
-│   │   ├── data_1640995200000.parquet
-│   │   └── data_1640995260000.parquet
-│   ├── year=2021/
-│   │   └── data_1672531200000.parquet
-│   └── year=2022/
-│       └── data_1704067200000.parquet
+your-archive-bucket/
+├── archived-data/
+│   ├── weather_reports/
+│   │   ├── year=2020/
+│   │   │   ├── data_1640995200000.parquet
+│   │   │   └── data_1640995260000.parquet
+│   │   ├── year=2021/
+│   │   └── year=2022/
+│   └── project_hours/
+│       ├── year=2020/
+│       │   ├── data_1640995200000.parquet
+│       │   └── data_1640995260000.parquet
+│       ├── year=2021/
+│       └── year=2022/
 └── temp-results/          # Athena query results (auto-deleted)
     ├── query_abc123.csv   # Temporary files
     └── query_def456.csv   # Cleaned up immediately
@@ -255,13 +253,16 @@ ARCHIVE_THRESHOLD_YEARS=2
 MIGRATION_BATCH_SIZE=1000
 
 # S3 folder structure
-S3_ARCHIVE_PREFIX=weather-reports/
+S3_ARCHIVE_PREFIX=archived-data/
+
+# Supported tables for migration
+SUPPORTED_TABLES=weather_reports,project_hours
 ```
 
 ### Athena Settings
 ```bash
 # Database for archived data
-ATHENA_DATABASE=weather_archive
+ATHENA_DATABASE=archive_database
 
 # Temporary query results (auto-cleaned)
 ATHENA_OUTPUT_PREFIX=temp-results/
@@ -277,7 +278,7 @@ ATHENA_IMMEDIATE_CLEANUP=true
 - **S3 Glacier IR**: ~$0.004/GB/month (96% savings)
 
 ### Example Savings
-For 100GB of historical weather data:
+For 100GB of historical data (weather_reports + project_hours):
 - **Before**: $20/month (all in MySQL)
 - **After**: $0.40/month (in S3 Glacier)
 - **Annual Savings**: $235
@@ -296,20 +297,29 @@ For 100GB of historical weather data:
 
 ## 📱 Monitoring
 
-### Health Check
+### Lambda Function Logs
 ```bash
-curl http://localhost:3000/api/data/health
+# View migration logs
+npm run lambda:logs:dev
+
+# View specific function logs
+serverless logs -f scheduledMigration --stage dev --tail
+serverless logs -f migrationTrigger --stage dev --tail
 ```
 
 ### Migration Status
 ```bash
-curl http://localhost:3000/api/scheduled-migration/status
+# Check migration status locally
+npm run migration:status
+
+# View migration logs
+npm run migration:logs
 ```
 
-### Performance Stats
-```bash
-curl http://localhost:3000/api/data/weather_reports/stats
-```
+### CloudWatch Monitoring
+- **Lambda Metrics**: Duration, errors, invocations
+- **S3 Metrics**: Storage usage and requests
+- **Athena Metrics**: Query performance and costs
 
 ## 🚨 Troubleshooting
 
@@ -338,6 +348,12 @@ npm run migration:status
 
 # View detailed logs
 npm run migration:logs
+
+# Test Lambda functions
+npm run lambda:migrate:dev
+
+# Check CloudWatch logs
+npm run lambda:logs:dev
 ```
 
 ## 🎯 Development
@@ -345,21 +361,18 @@ npm run migration:logs
 ### Project Structure
 ```
 src/
-├── app.js                 # Express application
 ├── config/               # Database and AWS configuration
-├── controllers/          # Request handlers
-├── routes/              # API route definitions
-├── scripts/             # Migration and utility scripts
+├── scripts/             # Migration and Lambda handlers
 ├── services/            # Business logic
 └── utils/               # Logging and utilities
 ```
 
 ### Key Services
-- **DataRouterService**: Smart query routing (MySQL vs S3)
+- **DataRouterService**: Migration routing and validation
 - **S3ArchiveService**: Parquet archival and retrieval
 - **AthenaService**: SQL analytics on archived data
 - **MySQLService**: Database operations
-- **ScheduledMigrationService**: Automated migration
+- **ScheduledMigrationService**: Automated migration scheduling
 
 ## 📝 License
 
@@ -370,12 +383,12 @@ MIT License - See LICENSE file for details
 ## 🎉 Quick Start Summary
 
 1. **Setup**: Create `.env` with your database and AWS credentials
-2. **Start**: `npm run dev`
-3. **Test**: `curl http://localhost:3000/api/data/health`
-4. **Migrate**: `npm run migrate:weather:dry` (preview) then `npm run migrate:weather`
-5. **Schedule**: `npm run migration:enable`
+2. **Test Migration**: `npm run migrate:weather:dry` (preview) then `npm run migrate:weather`
+3. **Deploy Lambda**: `npm run lambda:deploy:dev`
+4. **Schedule**: Enable scheduled migration in `config/migration-schedule.json` (weather_reports at 12:00 AM, project_hours at 1:00 AM US/California)
+5. **Monitor**: `npm run lambda:logs:dev` to view CloudWatch logs
 6. **Analyze**: Use Athena SQL queries on archived data
 
-**Your weather data is now automatically optimized for cost and performance!** 🌦️💰
+**Your data migration system is now running on AWS Lambda!** 🚀💰
 
-For support, check the API documentation at `http://localhost:3000/api` when running.
+For support, check the CloudWatch logs and Lambda function metrics in AWS Console.

@@ -1,13 +1,22 @@
 const MySQLService = require('./MySQLService');
 const S3ArchiveService = require('./S3ArchiveService');
+const AthenaService = require('./AthenaService');
 const moment = require('moment');
 
 class DataRouterService {
   constructor() {
     this.mysqlService = new MySQLService();
     this.s3ArchiveService = new S3ArchiveService();
+    this.athenaService = new AthenaService();
     this.archiveThresholdYears = parseInt(process.env.ARCHIVE_THRESHOLD_YEARS) || 2;
-    // Redis caching removed - simplified direct query approach
+    this.supportedTables = ['weather_reports', 'project_hours'];
+  }
+
+  /**
+   * Validate if table is supported for migration
+   */
+  isTableSupported(tableName) {
+    return this.supportedTables.includes(tableName);
   }
 
   /**
@@ -54,7 +63,7 @@ class DataRouterService {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
     } catch (error) {
-      console.warn(`⚠️  Moment parsing error in DataRouter for "${dateInput}":`, error.message);
+      console.warn(`Moment parsing error in DataRouter for "${dateInput}":`, error.message);
       return null;
     }
   }
@@ -65,7 +74,7 @@ class DataRouterService {
   safeParseDate(dateString, fallback = null) {
     const parsedDate = this.safeMoment(dateString);
     if (!parsedDate) {
-      console.warn(`⚠️  Invalid date in DataRouter: ${dateString}, using fallback`);
+      console.warn(`Invalid date in DataRouter: ${dateString}, using fallback`);
       return fallback;
     }
     
@@ -126,20 +135,20 @@ class DataRouterService {
 
       // Final validation
       if (!parsedMoment.isValid()) {
-        console.warn(`⚠️  Could not parse date: ${dateInput}`);
+        console.warn(`Could not parse date: ${dateInput}`);
         return null;
       }
 
       // Apply timezone if specified
       if (timezone && timezone !== 'UTC') {
         // Note: For full timezone support, consider using moment-timezone
-        console.log(`🌍 Timezone specified: ${timezone} (basic UTC offset applied)`);
+        console.log(`Timezone specified: ${timezone} (basic UTC offset applied)`);
       }
 
       return parsedMoment;
 
     } catch (error) {
-      console.warn(`⚠️  Date parsing error: ${error.message}`);
+      console.warn(`Date parsing error: ${error.message}`);
       return null;
     }
   }
@@ -199,20 +208,20 @@ class DataRouterService {
   }
 
   /**
-   * Query only archived data from S3
+   * Query only archived data from S3 using Athena
    */
   async queryArchiveOnly(tableName, filters, options) {
     try {
       console.log(`[DataRouter] Querying archived data only for table: ${tableName}`);
       
-      const result = await this.s3ArchiveService.queryArchivedData(tableName, filters, options);
+      const result = await this.athenaService.queryArchivedData(tableName, filters, options);
       
       return {
         ...result,
-        strategy: 's3-only',
+        strategy: 'athena-only',
         performance: {
           mysqlRecords: 0,
-          s3Records: result.totalCount,
+          s3Records: result.data.length,
           totalSources: 1
         }
       };
@@ -244,7 +253,7 @@ class DataRouterService {
       // Execute both queries in parallel
       const [recentResult, archiveResult] = await Promise.all([
         this.mysqlService.queryRecentData(tableName, recentFilters, options),
-        this.s3ArchiveService.queryArchivedData(tableName, archiveFilters, options)
+        this.athenaService.queryArchivedData(tableName, archiveFilters, options)
       ]);
 
       // Merge and sort results
@@ -330,7 +339,7 @@ class DataRouterService {
         throw new Error('Date parameter is required');
       }
 
-      console.log(`📅 Querying ${tableName} for specific date: ${date} (${timezone})`);
+      console.log(`Querying ${tableName} for specific date: ${date} (${timezone})`);
 
       // Parse and validate the date using flexible parsing
       const targetDate = this.parseFlexibleDate(date, timezone);
@@ -351,7 +360,7 @@ class DataRouterService {
         endDate = targetDate.clone().endOf('day');
       }
 
-      console.log(`🕐 Date range: ${startDate.format()} to ${endDate.format()}`);
+      console.log(`Date range: ${startDate.format()} to ${endDate.format()}`);
 
       // Create filters for the date range
       const dateFilters = {
@@ -413,7 +422,7 @@ class DataRouterService {
       }
 
       if (needsArchive) {
-        countPromises.push(this.s3ArchiveService.getArchivedCount(tableName, filters));
+        countPromises.push(this.athenaService.getArchivedCount(tableName, filters));
       }
 
       const counts = await Promise.all(countPromises);
@@ -441,8 +450,12 @@ class DataRouterService {
    */
   async getPerformanceStats(tableName) {
     try {
+      if (!this.isTableSupported(tableName)) {
+        throw new Error(`Table ${tableName} is not supported for migration`);
+      }
+
       const recentCount = await this.mysqlService.getRecentCount(tableName);
-      const archiveCount = await this.s3ArchiveService.getArchivedCount(tableName);
+      const archiveCount = await this.athenaService.getArchivedCount(tableName);
 
       return {
         tableName,
@@ -450,7 +463,8 @@ class DataRouterService {
         archivedRecords: archiveCount,
         totalRecords: recentCount + archiveCount,
         archivePercentage: ((archiveCount / (recentCount + archiveCount)) * 100).toFixed(2),
-        cutoffDate: moment().subtract(this.archiveThresholdYears, 'years').format('YYYY-MM-DD')
+        cutoffDate: moment().subtract(this.archiveThresholdYears, 'years').format('YYYY-MM-DD'),
+        supported: true
       };
     } catch (error) {
       console.error('Performance stats error:', error);

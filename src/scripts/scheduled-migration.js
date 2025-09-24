@@ -20,18 +20,18 @@ class ScheduledMigrationCLI {
    */
   async run() {
     try {
-      console.log('🕐 Scheduled Migration Service Starting...');
-      console.log(`📅 Current time: ${new Date().toISOString()}`);
+      console.log('Scheduled Migration Service Starting...');
+      console.log(`Current time: ${new Date().toISOString()}`);
       
       const result = await this.scheduler.runScheduledMigration();
       
       if (result.skipped) {
-        console.log('⏭️  Migration skipped - not due yet');
-        console.log(`📅 Next run: ${result.nextRun}`);
+        console.log('Migration skipped - not due yet');
+        console.log(`Next run: ${result.nextRun}`);
         process.exit(0);
       } else if (result.success) {
         console.log('Scheduled migration completed successfully');
-        console.log(`📊 Summary:`);
+        console.log(`Summary:`);
         console.log(`   - Duration: ${result.duration}s`);
         console.log(`   - Tables processed: ${Object.keys(result.results).length}`);
         console.log(`   - Next run: ${result.nextRun}`);
@@ -39,7 +39,7 @@ class ScheduledMigrationCLI {
         process.exit(0);
       } else {
         console.error('Scheduled migration failed');
-        console.error(`📊 Results:`, result.results);
+        console.error(`Results:`, result.results);
         process.exit(1);
       }
     } catch (error) {
@@ -56,10 +56,10 @@ class ScheduledMigrationCLI {
     try {
       const status = this.scheduler.getStatus();
       
-      console.log('📊 Scheduled Migration Status');
+      console.log('Scheduled Migration Status');
       console.log('=' * 40);
       console.log(`Enabled: ${status.enabled ? 'Enabled' : 'Disabled'}`);
-      console.log(`Currently Running: ${status.isRunning ? '🔄' : '⏸️'}`);
+      console.log(`Currently Running: ${status.isRunning ? 'Yes' : 'No'}`);
       console.log(`Schedule Interval: ${status.schedule.intervalMonths} months`);
       console.log(`Tables: ${status.tables.join(', ')}`);
       
@@ -83,7 +83,7 @@ class ScheduledMigrationCLI {
         console.log(`   Tables: ${status.lockInfo.tables.join(', ')}`);
       }
       
-      console.log('\n⚙️  Configuration:');
+      console.log('\nConfiguration:');
       console.log(`   Batch Size: ${status.configuration.batchSize}`);
       console.log(`   Retry Attempts: ${status.configuration.retryAttempts}`);
       console.log(`   Retry Delay: ${status.configuration.retryDelayMinutes} minutes`);
@@ -99,12 +99,12 @@ class ScheduledMigrationCLI {
    */
   async force() {
     try {
-      console.log('🔧 Force running migration...');
+      console.log('Force running migration...');
       const result = await this.scheduler.forceRunMigration();
       
       if (result.success) {
         console.log('Force migration completed successfully');
-        console.log(`📊 Duration: ${result.duration}s`);
+        console.log(`Duration: ${result.duration}s`);
       } else {
         console.error('Force migration failed');
         console.error(result.results);
@@ -125,7 +125,7 @@ class ScheduledMigrationCLI {
       console.log(`${enabled ? 'Enabled' : 'Disabled'} scheduled migration`);
       
       if (enabled && config.nextRun) {
-        console.log(`📅 Next run: ${new Date(config.nextRun).toLocaleString()}`);
+        console.log(`Next run: ${new Date(config.nextRun).toLocaleString()}`);
       }
     } catch (error) {
       console.error('Error toggling migration:', error.message);
@@ -139,8 +139,8 @@ class ScheduledMigrationCLI {
   async setInterval(months) {
     try {
       const config = this.scheduler.updateConfig({ scheduleIntervalMonths: months });
-      console.log(`⏰ Updated schedule interval to ${months} months`);
-      console.log(`📅 Next run: ${new Date(config.nextRun).toLocaleString()}`);
+      console.log(`Updated schedule interval to ${months} months`);
+      console.log(`Next run: ${new Date(config.nextRun).toLocaleString()}`);
     } catch (error) {
       console.error('Error updating interval:', error.message);
       process.exit(1);
@@ -155,11 +155,11 @@ class ScheduledMigrationCLI {
       const logs = this.scheduler.getRecentLogs(limit);
       
       if (logs.length === 0) {
-        console.log('📋 No migration logs found');
+        console.log('No migration logs found');
         return;
       }
       
-      console.log(`📋 Recent Migration Logs (${logs.length}):`);
+      console.log(`Recent Migration Logs (${logs.length}):`);
       console.log('=' * 50);
       
       logs.forEach((log, index) => {
@@ -180,21 +180,21 @@ class ScheduledMigrationCLI {
    */
   async test() {
     try {
-      console.log('🧪 Testing scheduled migration configuration...');
+      console.log('Testing scheduled migration configuration...');
       
       // Test database connection
-      console.log('📊 Testing MySQL connection...');
+      console.log('Testing MySQL connection...');
       // Add database connection test here
       
       // Test S3 connection
-      console.log('☁️  Testing S3 connection...');
+      console.log('Testing S3 connection...');
       // Add S3 connection test here
       
       // Test configuration
       const status = this.scheduler.getStatus();
-      console.log('⚙️  Configuration valid');
+      console.log('Configuration valid');
       
-      console.log('\n📋 Current Configuration:');
+      console.log('\nCurrent Configuration:');
       console.log(`   Tables: ${status.tables.join(', ')}`);
       console.log(`   Interval: ${status.schedule.intervalMonths} months`);
       console.log(`   Batch Size: ${status.configuration.batchSize}`);
@@ -211,7 +211,7 @@ class ScheduledMigrationCLI {
    * Generate cron configuration
    */
   generateCron() {
-    console.log('📅 Cron Configuration for 6-Month Scheduled Migration');
+    console.log('Cron Configuration for 6-Month Scheduled Migration');
     console.log('=' * 60);
     console.log('Add one of these lines to your crontab (crontab -e):');
     console.log('');
@@ -233,7 +233,7 @@ class ScheduledMigrationCLI {
     console.log('   - Test with: node src/scripts/scheduled-migration.js test');
     console.log('');
     
-    console.log('🔍 Status check cron (daily at 9 AM):');
+    console.log('Status check cron (daily at 9 AM):');
     console.log('0 9 * * * /usr/bin/node /path/to/your/project/src/scripts/scheduled-migration.js status > /tmp/migration-status.log 2>&1');
   }
 }

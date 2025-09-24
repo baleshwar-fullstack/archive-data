@@ -1,23 +1,13 @@
 {
   "enabled": true,
-  "scheduleIntervalMonths": 6,
+  "scheduleIntervalDays": 1,
   "tables": [
-    "weather_reports"
+    "weather_reports",
+    "project_hours"
   ],
   "retryAttempts": 3,
   "retryDelayMinutes": 30,
   "batchSize": 1000,
-  "notifications": {
-    "email": {
-      "enabled": false,
-      "recipients": [],
-      "smtp": {}
-    },
-    "webhook": {
-      "enabled": false,
-      "url": null
-    }
-  },
   "lastRun": null,
   "nextRun": null
 }

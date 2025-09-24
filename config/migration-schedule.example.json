@@ -1,32 +1,13 @@
 {
   "enabled": true,
-  "scheduleIntervalMonths": 6,
-  "tables": ["weather_reports"],
+  "scheduleIntervalDays": 1,
+  "tables": [
+    "weather_reports",
+    "project_hours"
+  ],
   "retryAttempts": 3,
   "retryDelayMinutes": 30,
   "batchSize": 1000,
-  "notifications": {
-    "email": {
-      "enabled": false,
-      "recipients": [
-        "admin@yourcompany.com",
-        "dataops@yourcompany.com"
-      ],
-      "smtp": {
-        "host": "smtp.yourcompany.com",
-        "port": 587,
-        "secure": false,
-        "auth": {
-          "user": "your-email@yourcompany.com",
-          "pass": "your-email-password"
-        }
-      }
-    },
-    "webhook": {
-      "enabled": false,
-      "url": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
-    }
-  },
   "lastRun": null,
   "nextRun": null
 }

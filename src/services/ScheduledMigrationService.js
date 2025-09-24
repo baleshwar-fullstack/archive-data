@@ -6,9 +6,18 @@ const path = require('path');
 class ScheduledMigrationService {
   constructor() {
     this.migrationService = new DataMigrationService();
-    this.logDir = path.join(process.cwd(), 'logs', 'scheduled-migrations');
-    this.configFile = path.join(process.cwd(), 'config', 'migration-schedule.json');
-    this.lockFile = path.join(process.cwd(), 'tmp', 'migration.lock');
+    this.isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+    
+    // Use appropriate directories based on environment
+    if (this.isLambda) {
+      this.logDir = '/tmp/logs/scheduled-migrations';
+      this.configFile = '/tmp/config/migration-schedule.json';
+      this.lockFile = '/tmp/migration.lock';
+    } else {
+      this.logDir = path.join(process.cwd(), 'logs', 'scheduled-migrations');
+      this.configFile = path.join(process.cwd(), 'config', 'migration-schedule.json');
+      this.lockFile = path.join(process.cwd(), 'tmp', 'migration.lock');
+    }
     
     // Ensure directories exist
     this.ensureDirectories();
@@ -175,12 +184,12 @@ class ScheduledMigrationService {
     };
 
     try {
-      log('🕐 Starting scheduled migration check...');
+      log('Starting scheduled migration check...');
 
       // Check if migration should run
       if (!this.shouldRunMigration()) {
         const nextRun = this.calculateNextRun();
-        log(`⏭️  Migration not due yet. Next run scheduled for: ${nextRun.format('YYYY-MM-DD HH:mm:ss')}`);
+        log(`Migration not due yet. Next run scheduled for: ${nextRun.format('YYYY-MM-DD HH:mm:ss')}`);
         logStream.end();
         return { success: true, skipped: true, nextRun: nextRun.toISOString() };
       }
@@ -188,12 +197,12 @@ class ScheduledMigrationService {
       // Check if migration is already running
       if (this.isMigrationRunning()) {
         const lockInfo = this.getLockInfo();
-        log(`🔒 Migration already running (PID: ${lockInfo?.pid}, Started: ${lockInfo?.startTime})`);
+        log(`Migration already running (PID: ${lockInfo?.pid}, Started: ${lockInfo?.startTime})`);
         logStream.end();
         return { success: false, error: 'Migration already running', lockInfo };
       }
 
-      log('🚀 Starting scheduled migration...');
+      log('Starting scheduled migration...');
       
       // Create lock
       this.createLock();
@@ -203,7 +212,7 @@ class ScheduledMigrationService {
 
       // Migrate each configured table
       for (const tableName of this.config.tables) {
-        log(`\n📊 Migrating table: ${tableName}`);
+        log(`\nMigrating table: ${tableName}`);
         
         let attempts = 0;
         let tableSuccess = false;
@@ -212,7 +221,7 @@ class ScheduledMigrationService {
           attempts++;
           
           try {
-            log(`   Attempt ${attempts}/${this.config.retryAttempts} for ${tableName}`);
+            log(`Attempt ${attempts}/${this.config.retryAttempts} for ${tableName}`);
             
             // Set batch size from config
             process.env.MIGRATION_BATCH_SIZE = this.config.batchSize.toString();
@@ -225,19 +234,19 @@ class ScheduledMigrationService {
               ...result
             };
             
-            log(`   ✅ ${tableName} migration completed successfully`);
-            log(`      - Processed: ${result.totalProcessed}`);
-            log(`      - Archived: ${result.totalArchived}`);
-            log(`      - Deleted: ${result.totalDeleted}`);
-            log(`      - Errors: ${result.errors}`);
+            log(`${tableName} migration completed successfully`);
+            log(`- Processed: ${result.totalProcessed}`);
+            log(`- Archived: ${result.totalArchived}`);
+            log(`- Deleted: ${result.totalDeleted}`);
+            log(`- Errors: ${result.errors}`);
             
             tableSuccess = true;
             
           } catch (error) {
-            log(`   ❌ Attempt ${attempts} failed for ${tableName}: ${error.message}`);
+            log(`Attempt ${attempts} failed for ${tableName}: ${error.message}`);
             
             if (attempts < this.config.retryAttempts) {
-              log(`   ⏳ Waiting ${this.config.retryDelayMinutes} minutes before retry...`);
+              log(`Waiting ${this.config.retryDelayMinutes} minutes before retry...`);
               await this.sleep(this.config.retryDelayMinutes * 60 * 1000);
             } else {
               migrationResults[tableName] = {
@@ -246,7 +255,7 @@ class ScheduledMigrationService {
                 error: error.message
               };
               totalSuccess = false;
-              log(`   ❌ All attempts failed for ${tableName}`);
+              log(`All attempts failed for ${tableName}`);
             }
           }
         }
@@ -259,13 +268,10 @@ class ScheduledMigrationService {
       this.saveConfig(this.config);
 
       const duration = Math.round((endTime - startTime) / 1000);
-      log(`\n🎉 Scheduled migration completed in ${duration} seconds`);
-      log(`📅 Next migration scheduled for: ${this.config.nextRun}`);
+      log(`\nScheduled migration completed in ${duration} seconds`);
+      log(`Next migration scheduled for: ${this.config.nextRun}`);
 
-      // Send notifications
-      if (this.config.notifications) {
-        await this.sendNotifications(migrationResults, totalSuccess, duration);
-      }
+      // Notifications disabled - removed to reduce complexity
 
       // Remove lock
       this.removeLock();
@@ -282,7 +288,7 @@ class ScheduledMigrationService {
       };
 
     } catch (error) {
-      log(`❌ Scheduled migration failed: ${error.message}`);
+      log(`Scheduled migration failed: ${error.message}`);
       log(`Stack trace: ${error.stack}`);
       
       // Remove lock on error
@@ -293,55 +299,6 @@ class ScheduledMigrationService {
     }
   }
 
-  /**
-   * Send notifications about migration results
-   */
-  async sendNotifications(results, success, duration) {
-    const summary = {
-      success,
-      duration,
-      timestamp: new Date().toISOString(),
-      tables: Object.keys(results).length,
-      totalProcessed: Object.values(results).reduce((sum, r) => sum + (r.totalProcessed || 0), 0),
-      totalArchived: Object.values(results).reduce((sum, r) => sum + (r.totalArchived || 0), 0),
-      errors: Object.values(results).reduce((sum, r) => sum + (r.errors || 0), 0)
-    };
-
-    // Email notification
-    if (this.config.notifications.email?.enabled) {
-      await this.sendEmailNotification(summary, results);
-    }
-
-    // Webhook notification
-    if (this.config.notifications.webhook?.enabled) {
-      await this.sendWebhookNotification(summary, results);
-    }
-  }
-
-  /**
-   * Send email notification (placeholder - implement with your email service)
-   */
-  async sendEmailNotification(summary, results) {
-    console.log('📧 Email notification would be sent:', summary);
-    // TODO: Implement with your preferred email service (SendGrid, SES, etc.)
-  }
-
-  /**
-   * Send webhook notification
-   */
-  async sendWebhookNotification(summary, results) {
-    try {
-      const axios = require('axios');
-      await axios.post(this.config.notifications.webhook.url, {
-        type: 'scheduled_migration',
-        summary,
-        results
-      });
-      console.log('🔗 Webhook notification sent successfully');
-    } catch (error) {
-      console.error('❌ Failed to send webhook notification:', error.message);
-    }
-  }
 
   /**
    * Get migration status and schedule information
@@ -443,6 +400,95 @@ class ScheduledMigrationService {
     } catch (error) {
       console.error('Error getting recent logs:', error);
       return [];
+    }
+  }
+
+  /**
+   * Run migration for a specific table
+   */
+  async runTableMigration(tableName) {
+    const startTime = moment();
+    const logFile = path.join(this.logDir, `migration-${tableName}-${startTime.format('YYYY-MM-DD-HH-mm-ss')}.log`);
+    const logStream = fs.createWriteStream(logFile);
+    
+    const log = (message) => {
+      const timestamp = moment().format('YYYY-MM-DD HH:mm:ss');
+      const logMessage = `[${timestamp}] ${message}\n`;
+      console.log(message);
+      logStream.write(logMessage);
+    };
+
+    try {
+      log(`Starting migration for table: ${tableName}`);
+
+      // Check if table is supported
+      if (!this.config.tables.includes(tableName)) {
+        throw new Error(`Table ${tableName} is not configured for migration`);
+      }
+
+      // Set batch size from config
+      process.env.MIGRATION_BATCH_SIZE = this.config.batchSize.toString();
+
+      let attempts = 0;
+      let success = false;
+      let result = null;
+
+      while (attempts < this.config.retryAttempts && !success) {
+        attempts++;
+        
+        try {
+          log(`Attempt ${attempts}/${this.config.retryAttempts} for ${tableName}`);
+          
+          result = await this.migrationService.migrate(tableName, { dryRun: false });
+          
+          log(`${tableName} migration completed successfully`);
+          log(`- Processed: ${result.totalProcessed}`);
+          log(`- Archived: ${result.totalArchived}`);
+          log(`- Deleted: ${result.totalDeleted}`);
+          log(`- Errors: ${result.errors}`);
+          
+          success = true;
+          
+        } catch (error) {
+          log(`Attempt ${attempts} failed for ${tableName}: ${error.message}`);
+          
+          if (attempts < this.config.retryAttempts) {
+            log(`Waiting ${this.config.retryDelayMinutes} minutes before retry...`);
+            await this.sleep(this.config.retryDelayMinutes * 60 * 1000);
+          } else {
+            log(`All attempts failed for ${tableName}`);
+            throw error;
+          }
+        }
+      }
+
+      const endTime = moment();
+      const duration = Math.round((endTime - startTime) / 1000);
+      
+      log(`Migration completed for ${tableName} in ${duration} seconds`);
+      logStream.end();
+
+      return {
+        success: true,
+        tableName,
+        duration,
+        attempts,
+        result,
+        logFile
+      };
+
+    } catch (error) {
+      log(`Migration failed for ${tableName}: ${error.message}`);
+      log(`Stack trace: ${error.stack}`);
+      logStream.end();
+
+      return {
+        success: false,
+        tableName,
+        error: error.message,
+        stack: error.stack,
+        logFile
+      };
     }
   }
 

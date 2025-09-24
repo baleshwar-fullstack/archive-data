@@ -1,61 +1,163 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
 # Logs
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
+lerna-debug.log*
 
 # Runtime data
-pids/
+pids
 *.pid
 *.seed
 *.pid.lock
 
-# Coverage
+# Coverage directory used by tools like istanbul
 coverage/
-.nyc_output/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+.grunt
+
+# Bower dependency directory (https://bower.io/)
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
 
 # Dependency directories
-node_modules/
+jspm_packages/
 
-# Build output
-build/
-dist/
-.tmp/
-.tmp-*/
-_tmp/
+# TypeScript v1 declaration files
+typings/
 
-# Temporary files
-*.tmp
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
+# TypeScript cache
+*.tsbuildinfo
 
-# Env files / secrets
-.env
-.env.*
-!.env.example
+# Optional npm cache directory
+.npm
 
-# Local config/IDE
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# AWS Lambda deployment packages
+*.zip
+serverless/
+
+# AWS credentials
+.aws/
+
+# IDE files
 .vscode/
 .idea/
-*.iml
+*.swp
+*.swo
+*~
 
-# OS files
+# OS generated files
+.DS_Store
 .DS_Store?
-Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Package locks (optional)
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+# PM2 files
+ecosystem.config.js
+.pm2/
 
-# AWS/Athena local caches (if any)
-.s3-cache/
+# Test files
+test-results/
+coverage/
+
+# Build artifacts
+build/
+dist/
+
+# Serverless Framework
+.serverless/
+
+# Local development
+local/
+dev/
+
+# Migration specific
+migration-lock
+*.lock
+migration-schedule.json.backup
+
+# Parquet temporary files
+*.parquet.tmp
+parquet-archive/
+
+# Athena query results
 athena-results/
 
-# Archive tmp/output
-/tmp/
-/tmp-*/
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Archive files
+*.tar.gz
+*.zip
+*.rar
+*.7z

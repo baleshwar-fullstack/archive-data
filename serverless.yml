@@ -1,0 +1,94 @@
+service: tiered-data-storage-migration
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  stage: ${opt:stage, 'dev'}
+  region: us-east-1
+  memorySize: 2048
+  timeout: 900
+  environment:
+    DB_HOST: ${env:DB_HOST}
+    DB_PORT: ${env:DB_PORT}
+    DB_USER: ${env:DB_USER}
+    DB_PASSWORD: ${env:DB_PASSWORD}
+    DB_NAME: ${env:DB_NAME}
+    AWS_REGION: ${env:AWS_REGION}
+    S3_BUCKET: ${env:S3_BUCKET}
+    S3_ARCHIVE_PREFIX: ${env:S3_ARCHIVE_PREFIX}
+    ATHENA_OUTPUT_BUCKET: ${env:ATHENA_OUTPUT_BUCKET}
+    ATHENA_OUTPUT_PREFIX: ${env:ATHENA_OUTPUT_PREFIX}
+    ATHENA_DATABASE: ${env:ATHENA_DATABASE}
+    ATHENA_WORKGROUP: ${env:ATHENA_WORKGROUP}
+    ATHENA_IMMEDIATE_CLEANUP: ${env:ATHENA_IMMEDIATE_CLEANUP}
+    ARCHIVE_THRESHOLD_YEARS: ${env:ARCHIVE_THRESHOLD_YEARS}
+    MIGRATION_BATCH_SIZE: ${env:MIGRATION_BATCH_SIZE}
+    SUPPORTED_TABLES: ${env:SUPPORTED_TABLES}
+    LOG_LEVEL: ${env:LOG_LEVEL}
+    NODE_ENV: ${env:NODE_ENV}
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+            - s3:ListBucket
+          Resource:
+            - "arn:aws:s3:::${env:S3_BUCKET}"
+            - "arn:aws:s3:::${env:S3_BUCKET}/*"
+        - Effect: "Allow"
+          Action:
+            - athena:StartQueryExecution
+            - athena:GetQueryExecution
+            - athena:GetQueryResults
+            - athena:StopQueryExecution
+          Resource: "*"
+        - Effect: "Allow"
+          Action:
+            - glue:GetTable
+            - glue:GetDatabase
+            - glue:GetPartitions
+          Resource: "*"
+
+functions:
+  # Weather reports migration - runs at midnight US/California (8 AM UTC)
+  weatherReportsMigration:
+    handler: lambda.handler
+    events:
+      - schedule:
+          rate: cron(0 8 * * ? *)
+          enabled: false
+          input:
+            action: 'migrate'
+            tableName: 'weather_reports'
+    timeout: 900
+    memorySize: 2048
+
+  # Project hours migration - runs at 1 AM US/California (9 AM UTC)
+  projectHoursMigration:
+    handler: lambda.handler
+    events:
+      - schedule:
+          rate: cron(0 9 * * ? *)
+          enabled: false
+          input:
+            action: 'migrate'
+            tableName: 'project_hours'
+    timeout: 900
+    memorySize: 2048
+
+
+# No plugins needed for migration-only functions
+
+package:
+  patterns:
+    - '!logs/**'
+    - '!tmp/**'
+    - '!node_modules/aws-sdk/**'
+    - '!.env'
+    - '!README.md'
+    - '!ecosystem-simple.config.js'

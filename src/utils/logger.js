@@ -1,7 +1,17 @@
 const winston = require('winston');
+const fs = require('fs');
+const path = require('path');
 
 class Logger {
   constructor() {
+    this.isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+    this.logDir = this.isLambda ? '/tmp/logs' : 'logs';
+    
+    // Ensure log directory exists
+    if (!this.isLambda && !fs.existsSync(this.logDir)) {
+      fs.mkdirSync(this.logDir, { recursive: true });
+    }
+
     this.logger = winston.createLogger({
       level: process.env.LOG_LEVEL || 'info',
       format: winston.format.combine(
@@ -9,7 +19,11 @@ class Logger {
         winston.format.errors({ stack: true }),
         winston.format.json()
       ),
-      defaultMeta: { service: 'tiered-data-storage' },
+      defaultMeta: { 
+        service: 'tiered-data-storage',
+        environment: process.env.NODE_ENV || 'development',
+        isLambda: this.isLambda
+      },
       transports: [
         new winston.transports.Console({
           format: winston.format.combine(
@@ -20,14 +34,14 @@ class Logger {
       ]
     });
 
-    // Add file transports in production
-    if (process.env.NODE_ENV === 'production') {
+    // Add file transports only in non-Lambda production environments
+    if (process.env.NODE_ENV === 'production' && !this.isLambda) {
       this.logger.add(new winston.transports.File({ 
-        filename: 'logs/error.log', 
+        filename: path.join(this.logDir, 'error.log'), 
         level: 'error' 
       }));
       this.logger.add(new winston.transports.File({ 
-        filename: 'logs/combined.log' 
+        filename: path.join(this.logDir, 'combined.log') 
       }));
     }
   }

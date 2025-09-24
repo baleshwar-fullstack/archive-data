@@ -11,15 +11,22 @@ class S3ArchiveService {
     this.s3 = awsConfig.getS3();
     this.bucket = awsConfig.getBucketName();
     this.prefix = awsConfig.getArchivePrefix();
-    this.tempDir = path.join(os.tmpdir(), 'parquet-archive');
+    
+    // Use Lambda /tmp directory when running in Lambda environment
+    this.isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+    this.tempDir = this.isLambda 
+      ? path.join('/tmp', 'parquet-archive')
+      : path.join(os.tmpdir(), 'parquet-archive');
 
     // Ensure temp directory exists
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
     }
 
-    // Clean up any existing temp files on startup
-    this.cleanupTempDirectory();
+    // Clean up any existing temp files on startup (only in non-Lambda environments)
+    if (!this.isLambda) {
+      this.cleanupTempDirectory();
+    }
   }
 
   /**
@@ -683,7 +690,7 @@ class S3ArchiveService {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
     } catch (error) {
-      console.warn(`⚠️  Moment parsing error for "${dateInput}":`, error.message);
+      console.warn(`Moment parsing error for "${dateInput}":`, error.message);
       return null;
     }
   }
