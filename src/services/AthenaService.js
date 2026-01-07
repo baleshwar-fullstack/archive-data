@@ -39,6 +39,7 @@ class AthenaService {
   }
 
   /**
+   * 
    * Safely create moment object without throwing errors
    */
   safeMoment(dateInput) {
