@@ -21,22 +21,22 @@ class MySQLService {
     if (!dateInput || dateInput === 'undefined' || dateInput === 'null') {
       return false;
     }
-    
+
     if (typeof dateInput === 'string') {
       const trimmed = dateInput.trim();
-      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' || 
-          trimmed.includes('invalid') || trimmed.includes('Invalid')) {
+      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' ||
+        trimmed.includes('invalid') || trimmed.includes('Invalid')) {
         return false;
       }
-      
+
       const basicDatePattern = /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/;
       const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-      
+
       if (!basicDatePattern.test(trimmed) && !isoPattern.test(trimmed)) {
         return false;
       }
     }
-    
+
     return true;
   }
 
@@ -47,7 +47,7 @@ class MySQLService {
     if (!this.isValidDateInput(dateInput)) {
       return null;
     }
-    
+
     try {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
@@ -66,7 +66,7 @@ class MySQLService {
       console.warn(`Invalid date in MySQLService: ${dateString}, using fallback`);
       return fallback;
     }
-    
+
     return parsedDate;
   }
 
@@ -76,7 +76,7 @@ class MySQLService {
   async queryRecentData(tableName, filters = {}, options = {}) {
     try {
       const cutoffDate = this.getArchiveCutoffDate();
-      
+
       // Build dynamic query based on filters
       let query = `SELECT * FROM ${tableName} WHERE created_at >= ?`;
       let params = [cutoffDate];
@@ -134,7 +134,7 @@ class MySQLService {
   async getRecentCount(tableName, filters = {}) {
     try {
       const cutoffDate = this.getArchiveCutoffDate();
-      
+
       let query = `SELECT COUNT(*) as count FROM ${tableName} WHERE created_at >= ?`;
       let params = [cutoffDate];
 
@@ -159,11 +159,11 @@ class MySQLService {
   async getRecordsForArchive(tableName, batchSize = 1000, offset = 0) {
     try {
       const cutoffDate = this.getArchiveCutoffDate();
-      
+
       // Ensure batchSize and offset are integers
       const limit = parseInt(batchSize);
       const offsetInt = parseInt(offset);
-      
+
       // Validation
       if (isNaN(limit) || limit <= 0) {
         throw new Error(`Invalid batch size: ${batchSize}`);
@@ -171,7 +171,7 @@ class MySQLService {
       if (isNaN(offsetInt) || offsetInt < 0) {
         throw new Error(`Invalid offset: ${offset}`);
       }
-      
+
       // Use template literals for LIMIT and OFFSET to avoid parameter binding issues
       // Include project's timezone for downstream archiving and Athena queries
       const query = `
@@ -181,10 +181,10 @@ class MySQLService {
         WHERE t.created_at < ?
         LIMIT ${limit} OFFSET ${offsetInt}
       `;
-      
+
       console.log(`Archive query: ${query.replace(/\s+/g, ' ').trim()}`);
       console.log(`Parameters: cutoffDate=${cutoffDate}, limit=${limit}, offset=${offsetInt}`);
-      
+
       const results = await this.db.query(query, [cutoffDate]);
       return results;
     } catch (error) {
@@ -204,7 +204,7 @@ class MySQLService {
 
       const placeholders = recordIds.map(() => '?').join(',');
       const query = `DELETE FROM ${tableName} WHERE id IN (${placeholders})`;
-      
+
       const result = await this.db.query(query, recordIds);
       return {
         success: true,
@@ -253,7 +253,7 @@ class MySQLService {
     const cutoffDate = this.getArchiveCutoffDate();
     const startMoment = this.safeMoment(startDate);
     const cutoffMoment = moment(cutoffDate);
-    
+
     if (!startMoment) {
       console.warn(`Invalid startDate for filtering: ${startDate}, using cutoff date`);
       return {
@@ -261,7 +261,7 @@ class MySQLService {
         endDate: endDate
       };
     }
-    
+
     return {
       startDate: moment.max(startMoment, cutoffMoment).format('YYYY-MM-DD HH:mm:ss'),
       endDate: endDate

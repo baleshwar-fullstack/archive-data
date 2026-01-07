@@ -7,7 +7,7 @@ class ScheduledMigrationService {
   constructor() {
     this.migrationService = new DataMigrationService();
     this.isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-    
+
     // Use appropriate directories based on environment
     if (this.isLambda) {
       this.logDir = '/tmp/logs/scheduled-migrations';
@@ -18,10 +18,10 @@ class ScheduledMigrationService {
       this.configFile = path.join(process.cwd(), 'config', 'migration-schedule.json');
       this.lockFile = path.join(process.cwd(), 'tmp', 'migration.lock');
     }
-    
+
     // Ensure directories exist
     this.ensureDirectories();
-    
+
     // Load configuration
     this.config = this.loadConfig();
   }
@@ -98,7 +98,7 @@ class ScheduledMigrationService {
     }
 
     const now = moment();
-    
+
     // If no last run, schedule should run
     if (!this.config.lastRun) {
       return true;
@@ -106,7 +106,7 @@ class ScheduledMigrationService {
 
     const lastRun = moment(this.config.lastRun);
     const monthsSinceLastRun = now.diff(lastRun, 'months');
-    
+
     return monthsSinceLastRun >= this.config.scheduleIntervalMonths;
   }
 
@@ -157,7 +157,7 @@ class ScheduledMigrationService {
     if (!fs.existsSync(this.lockFile)) {
       return null;
     }
-    
+
     try {
       return JSON.parse(fs.readFileSync(this.lockFile, 'utf8'));
     } catch (error) {
@@ -172,10 +172,10 @@ class ScheduledMigrationService {
   async runScheduledMigration() {
     const startTime = new Date();
     const logFile = path.join(this.logDir, `migration-${moment().format('YYYY-MM-DD-HH-mm-ss')}.log`);
-    
+
     // Create log stream
     const logStream = fs.createWriteStream(logFile, { flags: 'a' });
-    
+
     const log = (message) => {
       const timestamp = new Date().toISOString();
       const logMessage = `[${timestamp}] ${message}\n`;
@@ -203,7 +203,7 @@ class ScheduledMigrationService {
       }
 
       log('Starting scheduled migration...');
-      
+
       // Create lock
       this.createLock();
 
@@ -213,38 +213,38 @@ class ScheduledMigrationService {
       // Migrate each configured table
       for (const tableName of this.config.tables) {
         log(`\nMigrating table: ${tableName}`);
-        
+
         let attempts = 0;
         let tableSuccess = false;
 
         while (attempts < this.config.retryAttempts && !tableSuccess) {
           attempts++;
-          
+
           try {
             log(`Attempt ${attempts}/${this.config.retryAttempts} for ${tableName}`);
-            
+
             // Set batch size from config
             process.env.MIGRATION_BATCH_SIZE = this.config.batchSize.toString();
-            
+
             const result = await this.migrationService.migrate(tableName, { dryRun: false });
-            
+
             migrationResults[tableName] = {
               success: true,
               attempts,
               ...result
             };
-            
+
             log(`${tableName} migration completed successfully`);
             log(`- Processed: ${result.totalProcessed}`);
             log(`- Archived: ${result.totalArchived}`);
             log(`- Deleted: ${result.totalDeleted}`);
             log(`- Errors: ${result.errors}`);
-            
+
             tableSuccess = true;
-            
+
           } catch (error) {
             log(`Attempt ${attempts} failed for ${tableName}: ${error.message}`);
-            
+
             if (attempts < this.config.retryAttempts) {
               log(`Waiting ${this.config.retryDelayMinutes} minutes before retry...`);
               await this.sleep(this.config.retryDelayMinutes * 60 * 1000);
@@ -290,11 +290,11 @@ class ScheduledMigrationService {
     } catch (error) {
       log(`Scheduled migration failed: ${error.message}`);
       log(`Stack trace: ${error.stack}`);
-      
+
       // Remove lock on error
       this.removeLock();
       logStream.end();
-      
+
       throw error;
     }
   }
@@ -307,7 +307,7 @@ class ScheduledMigrationService {
     const now = moment();
     const isRunning = this.isMigrationRunning();
     const lockInfo = isRunning ? this.getLockInfo() : null;
-    
+
     const status = {
       enabled: this.config.enabled,
       isRunning,
@@ -339,12 +339,12 @@ class ScheduledMigrationService {
    */
   updateConfig(updates) {
     this.config = { ...this.config, ...updates };
-    
+
     // Recalculate next run if interval changed
     if (updates.scheduleIntervalMonths) {
       this.config.nextRun = this.calculateNextRun().toISOString();
     }
-    
+
     this.saveConfig(this.config);
     return this.config;
   }
@@ -354,15 +354,15 @@ class ScheduledMigrationService {
    */
   async forceRunMigration() {
     console.log('🔧 Force running migration (ignoring schedule)...');
-    
+
     // Temporarily disable schedule check
     const originalEnabled = this.config.enabled;
     this.config.enabled = true;
-    
+
     // Force last run to be old enough
     const originalLastRun = this.config.lastRun;
     this.config.lastRun = moment().subtract(this.config.scheduleIntervalMonths + 1, 'months').toISOString();
-    
+
     try {
       const result = await this.runScheduledMigration();
       return result;
@@ -410,7 +410,7 @@ class ScheduledMigrationService {
     const startTime = moment();
     const logFile = path.join(this.logDir, `migration-${tableName}-${startTime.format('YYYY-MM-DD-HH-mm-ss')}.log`);
     const logStream = fs.createWriteStream(logFile);
-    
+
     const log = (message) => {
       const timestamp = moment().format('YYYY-MM-DD HH:mm:ss');
       const logMessage = `[${timestamp}] ${message}\n`;
@@ -435,23 +435,23 @@ class ScheduledMigrationService {
 
       while (attempts < this.config.retryAttempts && !success) {
         attempts++;
-        
+
         try {
           log(`Attempt ${attempts}/${this.config.retryAttempts} for ${tableName}`);
-          
+
           result = await this.migrationService.migrate(tableName, { dryRun: false });
-          
+
           log(`${tableName} migration completed successfully`);
           log(`- Processed: ${result.totalProcessed}`);
           log(`- Archived: ${result.totalArchived}`);
           log(`- Deleted: ${result.totalDeleted}`);
           log(`- Errors: ${result.errors}`);
-          
+
           success = true;
-          
+
         } catch (error) {
           log(`Attempt ${attempts} failed for ${tableName}: ${error.message}`);
-          
+
           if (attempts < this.config.retryAttempts) {
             log(`Waiting ${this.config.retryDelayMinutes} minutes before retry...`);
             await this.sleep(this.config.retryDelayMinutes * 60 * 1000);
@@ -464,7 +464,7 @@ class ScheduledMigrationService {
 
       const endTime = moment();
       const duration = Math.round((endTime - startTime) / 1000);
-      
+
       log(`Migration completed for ${tableName} in ${duration} seconds`);
       logStream.end();
 

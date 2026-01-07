@@ -26,14 +26,14 @@ class DataRouterService {
     if (!dateInput || dateInput === 'undefined' || dateInput === 'null') {
       return false;
     }
-    
+
     if (typeof dateInput === 'string') {
       const trimmed = dateInput.trim();
-      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' || 
-          trimmed.includes('invalid') || trimmed.includes('Invalid')) {
+      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' ||
+        trimmed.includes('invalid') || trimmed.includes('Invalid')) {
         return false;
       }
-      
+
       // Basic date format check - allow various common formats
       const patterns = [
         /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/, // YYYY-MM-DD or YYYY/MM/DD
@@ -41,13 +41,13 @@ class DataRouterService {
         /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, // ISO format
         /^\d{10,13}$/ // Unix timestamps (10 or 13 digits)
       ];
-      
+
       const hasValidPattern = patterns.some(pattern => pattern.test(trimmed));
       if (!hasValidPattern) {
         return false;
       }
     }
-    
+
     return true;
   }
 
@@ -58,7 +58,7 @@ class DataRouterService {
     if (!this.isValidDateInput(dateInput)) {
       return null;
     }
-    
+
     try {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
@@ -77,7 +77,7 @@ class DataRouterService {
       console.warn(`Invalid date in DataRouter: ${dateString}, using fallback`);
       return fallback;
     }
-    
+
     return parsedDate;
   }
 
@@ -106,7 +106,7 @@ class DataRouterService {
 
     try {
       let parsedMoment;
-      
+
       // Try different date formats
       const formats = [
         'YYYY-MM-DD',
@@ -190,9 +190,9 @@ class DataRouterService {
   async queryRecentOnly(tableName, filters, options) {
     try {
       console.log(`[DataRouter] Querying recent data only for table: ${tableName}`);
-      
+
       const result = await this.mysqlService.queryRecentData(tableName, filters, options);
-      
+
       return {
         ...result,
         strategy: 'mysql-only',
@@ -213,9 +213,9 @@ class DataRouterService {
   async queryArchiveOnly(tableName, filters, options) {
     try {
       console.log(`[DataRouter] Querying archived data only for table: ${tableName}`);
-      
+
       const result = await this.athenaService.queryArchivedData(tableName, filters, options);
-      
+
       return {
         ...result,
         strategy: 'athena-only',
@@ -236,15 +236,15 @@ class DataRouterService {
   async queryHybrid(tableName, filters, options) {
     try {
       console.log(`[DataRouter] Executing hybrid query for table: ${tableName}`);
-      
+
       const cutoffDate = moment().subtract(this.archiveThresholdYears, 'years');
-      
+
       // Split the query into two parts
       const recentFilters = {
         ...filters,
         ...this.mysqlService.filterForRecentData(filters.startDate, filters.endDate)
       };
-      
+
       const archiveFilters = {
         ...filters,
         ...this.s3ArchiveService.filterForArchivedData(filters.startDate, filters.endDate)
@@ -306,7 +306,7 @@ class DataRouterService {
       processedData.sort((a, b) => {
         const aVal = a[options.orderBy];
         const bVal = b[options.orderBy];
-        
+
         if (options.orderDirection === 'DESC') {
           return bVal > aVal ? 1 : -1;
         } else {
@@ -331,10 +331,10 @@ class DataRouterService {
    */
   async getBySpecificDate(tableName, filters = {}, options = {}) {
     const startTime = Date.now();
-    
+
     try {
       const { date, timezone = 'UTC', includeTime = false } = filters;
-      
+
       if (!date) {
         throw new Error('Date parameter is required');
       }
@@ -349,7 +349,7 @@ class DataRouterService {
 
       // Create date range for the specific day
       let startDate, endDate;
-      
+
       if (includeTime) {
         // For time-specific queries, use the exact timestamp
         startDate = targetDate.clone();
