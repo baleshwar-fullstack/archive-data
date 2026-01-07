@@ -19,33 +19,34 @@ class AthenaService {
     if (!dateInput || dateInput === 'undefined' || dateInput === 'null') {
       return false;
     }
-    
+
     if (typeof dateInput === 'string') {
       const trimmed = dateInput.trim();
-      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' || 
-          trimmed.includes('invalid') || trimmed.includes('Invalid')) {
+      if (trimmed === '' || trimmed === 'Invalid date' || trimmed === 'NaN' ||
+        trimmed.includes('invalid') || trimmed.includes('Invalid')) {
         return false;
       }
-      
+
       const basicDatePattern = /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/;
       const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-      
+
       if (!basicDatePattern.test(trimmed) && !isoPattern.test(trimmed)) {
         return false;
       }
     }
-    
+
     return true;
   }
 
   /**
+   * 
    * Safely create moment object without throwing errors
    */
   safeMoment(dateInput) {
     if (!this.isValidDateInput(dateInput)) {
       return null;
     }
-    
+
     try {
       const momentObj = moment(dateInput);
       return momentObj.isValid() ? momentObj : null;
@@ -64,7 +65,7 @@ class AthenaService {
       console.warn(`Invalid date in Athena query: ${dateString}, using default year: ${defaultYear}`);
       return defaultYear;
     }
-    
+
     return dateMoment.year();
   }
 
@@ -74,10 +75,10 @@ class AthenaService {
    */
   async executeQuery(sql, options = {}) {
     let queryExecutionId = null;
-    
+
     try {
       console.log('Executing Athena query on Parquet data...');
-      
+
       const params = {
         QueryString: sql,
         ResultConfiguration: {
@@ -92,23 +93,23 @@ class AthenaService {
       // Start query execution
       const startResult = await this.athena.startQueryExecution(params).promise();
       queryExecutionId = startResult.QueryExecutionId;
-      
+
       console.log(`Query started with ID: ${queryExecutionId}`);
 
       // Wait for query completion
       const queryResult = await this.waitForQueryCompletion(queryExecutionId, options.timeout);
-      
+
       if (queryResult.status === 'SUCCEEDED') {
         // Get query results directly from Athena API
         const results = await this.getQueryResults(queryExecutionId);
-        
+
         console.log(`Athena query completed: ${results.length} rows returned`);
-        
+
         // IMMEDIATE CLEANUP: Delete S3 result files right after getting data
         if (this.immediateCleanup) {
           await this.cleanupQueryResults(queryExecutionId);
         }
-        
+
         return {
           success: true,
           data: results,
@@ -122,7 +123,7 @@ class AthenaService {
       }
     } catch (error) {
       console.error('Athena query error:', error);
-      
+
       // Cleanup on error too (if query was started)
       if (queryExecutionId && this.immediateCleanup) {
         try {
@@ -131,7 +132,7 @@ class AthenaService {
           console.warn('Cleanup warning:', cleanupError.message);
         }
       }
-      
+
       throw new Error(`Athena query failed: ${error.message}`);
     }
   }
@@ -141,7 +142,7 @@ class AthenaService {
    */
   async waitForQueryCompletion(queryExecutionId, timeout = this.defaultTimeout) {
     const startTime = Date.now();
-    
+
     while (Date.now() - startTime < timeout) {
       try {
         const result = await this.athena.getQueryExecution({
@@ -149,7 +150,7 @@ class AthenaService {
         }).promise();
 
         const status = result.QueryExecution.Status.State;
-        
+
         if (status === 'SUCCEEDED') {
           return {
             status: 'SUCCEEDED',
@@ -192,13 +193,13 @@ class AthenaService {
         }
 
         const response = await this.athena.getQueryResults(params).promise();
-        
+
         // Skip header row for first batch
         const rows = nextToken ? response.ResultSet.Rows : response.ResultSet.Rows.slice(1);
-        
+
         // Convert rows to objects
         const columnNames = response.ResultSet.ResultSetMetadata.ColumnInfo.map(col => col.Name);
-        
+
         rows.forEach(row => {
           const record = {};
           row.Data.forEach((field, index) => {
@@ -225,14 +226,14 @@ class AthenaService {
     if (!this.immediateCleanup) {
       return; // Cleanup disabled
     }
-    
+
     try {
       // Athena creates files with this naming pattern
       const csvKey = `${this.s3OutputPrefix}${queryExecutionId}.csv`;
       const metadataKey = `${this.s3OutputPrefix}${queryExecutionId}.csv.metadata`;
-      
+
       console.log(`Cleaning up query results for ${queryExecutionId}...`);
-      
+
       // Delete both result and metadata files in parallel
       const deletePromises = [
         this.s3.deleteObject({
@@ -244,11 +245,11 @@ class AthenaService {
           Key: metadataKey
         }).promise()
       ];
-      
+
       await Promise.all(deletePromises);
-      
+
       console.log(`Query result files cleaned up successfully`);
-      
+
     } catch (error) {
       console.warn(`Cleanup warning for ${queryExecutionId}:`, error.message);
       // Don't fail the query if cleanup fails - just warn
@@ -263,7 +264,7 @@ class AthenaService {
     try {
       let sql = `SELECT * FROM ${this.databaseName}.${tableName}_archive`;
       const conditions = [];
-      
+
       // Add year-based partition pruning (more efficient)
       if (filters.startDate) {
         const startYear = this.getYearFromDate(filters.startDate);
@@ -271,7 +272,7 @@ class AthenaService {
           conditions.push(`archive_year >= ${startYear}`);
         }
       }
-      
+
       if (filters.endDate) {
         const endYear = this.getYearFromDate(filters.endDate);
         if (endYear) {
@@ -294,7 +295,7 @@ class AthenaService {
       if (filters.startDate) {
         conditions.push(`created_at >= TIMESTAMP '${filters.startDate}'`);
       }
-      
+
       if (filters.endDate) {
         conditions.push(`created_at <= TIMESTAMP '${filters.endDate}'`);
       }
@@ -333,7 +334,7 @@ class AthenaService {
     try {
       let sql = `SELECT COUNT(*) as total_count FROM ${this.databaseName}.${tableName}_archive`;
       const conditions = [];
-      
+
       // Add year-based partition filters
       if (filters.startDate) {
         const startYear = this.getYearFromDate(filters.startDate);
@@ -342,7 +343,7 @@ class AthenaService {
         }
         conditions.push(`created_at >= TIMESTAMP '${filters.startDate}'`);
       }
-      
+
       if (filters.endDate) {
         const endYear = this.getYearFromDate(filters.endDate);
         if (endYear) {
@@ -374,13 +375,13 @@ class AthenaService {
   async createArchivedTable(tableName, s3ArchiveService) {
     try {
       const ddl = s3ArchiveService.generateAthenaTableDDL(tableName, this.databaseName);
-      
+
       console.log(`Creating Athena table for ${tableName}...`);
       console.log(ddl);
-      
+
       // Execute the CREATE TABLE statement
       const result = await this.executeQuery(ddl);
-      
+
       console.log(`Athena table ${tableName} created successfully`);
       return result;
     } catch (error) {
@@ -420,7 +421,7 @@ class AthenaService {
         const execution = await this.athena.getQueryExecution({
           QueryExecutionId: queryId
         }).promise();
-        
+
         queries.push({
           queryId,
           query: execution.QueryExecution.Query,

@@ -31,6 +31,7 @@ class S3ArchiveService {
 
   /**
    * Get archive prefix for a specific table
+   * 
    */
   getTablePrefix(tableName) {
     const lower = String(tableName || '').toLowerCase();
