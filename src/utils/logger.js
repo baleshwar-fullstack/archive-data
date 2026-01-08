@@ -4,6 +4,7 @@ const path = require('path');
 
 class Logger {
   constructor() {
+    // Determine if running in AWS Lambda
     this.isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
     this.logDir = this.isLambda ? '/tmp/logs' : 'logs';
     
